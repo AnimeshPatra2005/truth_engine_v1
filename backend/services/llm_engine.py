@@ -13,14 +13,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from langgraph.graph import StateGraph, END, START
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
-from tools import search_web 
+from services.tools import search_web 
 
 load_dotenv()
 
 # ==============================================================================
 # 1. SETUP
 # ==============================================================================
-MODEL_NAME = "gemini-3-flash-preview"
+MODEL_NAME = "gemini-2.5-flash"
 # Rate limiting configuration
 API_CALL_DELAY = 10  # seconds between calls
 MAX_RETRIES_ON_QUOTA = 3  # number of retries for quota errors
@@ -28,13 +28,13 @@ api_call_count = 0  # Track API calls
 
 # FIX: Ensure we use the stable 1.5 model
 llm_analysis = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"), 
     temperature=0
 )
 
 llm_search = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),   
     temperature=0.7 
 )
@@ -413,6 +413,19 @@ workflow.add_edge("judge", END)
 app = workflow.compile()
 
 # ==============================================================================
+# 6. WRAPPER FUNCTION FOR API USAGE
+# ==============================================================================
+
+def analyze_text(transcript: str) -> dict:
+    """Wrapper function to analyze transcript and return verdict result"""
+    try:
+        result = app.invoke({"transcript": transcript})
+        return result.get('final_verdict', {})
+    except Exception as e:
+        print(f"Error analyzing text: {e}")
+        return {"error": str(e)}
+
+# ==============================================================================
 # 6. RUNNER
 # ==============================================================================
 
@@ -421,7 +434,7 @@ app = workflow.compile()
 # ==============================================================================
 
 if __name__ == "__main__":
-    transcript = "Karna was stronger than Arjun."
+    transcript = "Umar Khalid was innocent."
     
     print(f"🚀 ENGINE STARTING: '{transcript}'")
     print(f"⏱️ Rate Limiting: {API_CALL_DELAY}s delay")

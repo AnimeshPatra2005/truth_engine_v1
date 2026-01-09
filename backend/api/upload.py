@@ -1,10 +1,9 @@
 from fastapi import APIRouter, UploadFile, File
-from backend.services.transcriber import transcribe_video
-from backend.services.llm_engine import analyze_text
-from backend.core.config import settings
+from services.transcriber import transcribe_video
+from services.llm_engine import analyze_text
+from core.config import settings
 import shutil
 import os
- # <--- IMPORT SETTINGS
 
 router = APIRouter()
 

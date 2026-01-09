@@ -17,7 +17,7 @@ else:
 
 def search_web(query: str, intent: str = "general") -> dict:
     """
-    Searches the web using Tavily.
+    Searches the web using Tavily with relevance-score gating.
     """
     if not tavily_client:
         return {"error": "Search is disabled (No API Key)"}
@@ -25,23 +25,29 @@ def search_web(query: str, intent: str = "general") -> dict:
     print(f"🔎 Searching Web ({intent}): {query}")
 
     try:
-        # We use 'search_depth="advanced"' to get real content.
-        # REMOVED 'include_domains' to let Agents see the whole internet.
         response = tavily_client.search(
             query=query,
             search_depth="advanced",
             max_results=5
         )
-        
+
+        MIN_RELEVANCE_SCORE = 0.5
         clean_results = []
-        for result in response.get('results', []):
+
+        for result in response.get("results", []):
+            score = result.get("score", 0)
+
+            if score < MIN_RELEVANCE_SCORE:
+                print(f"⛔ Skipping low-relevance result (score={score})")
+                continue
+
             clean_results.append({
-                "source": result['title'],
-                "url": result['url'],
-                # Limit text to 500 chars to save tokens
-                "content": result['content'][:4000] 
+                "source": result.get("title"),
+                "url": result.get("url"),
+                "score": score,
+                "content": result.get("content", "")[:4000]
             })
-            
+
         return {"results": clean_results}
 
     except Exception as e:
@@ -52,7 +58,7 @@ def search_web(query: str, intent: str = "general") -> dict:
 if __name__ == "__main__":
     print("--- Testing Search Tool ---")
     # Test queries
-    result = search_web("Is the earth flat?", intent="prosecutor")
+    result = search_web("Karna pushed Arjuna's chariot documented OR recorded in original Mahabharata ", intent="prosecutor")
     
     import json
     print(json.dumps(result, indent=2))
