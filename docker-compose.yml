@@ -1,32 +1,13 @@
 version: '3.8'
 
 services:
-  # Service 1: The Database (PostgreSQL)
-  db:
-    image: postgres:15
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=truth_admin
-      - POSTGRES_PASSWORD=truth_pass
-      - POSTGRES_DB=truth_db
-
-  # Service 2: The Truth Engine (FastAPI)
-  web:
+  # Just your app. No Database. No Redis.
+  truth_engine:
     build: .
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app/backend  # Syncs code changes instantly
     ports:
       - "8000:8000"
-    depends_on:
-      - db
-    # --- CRITICAL FIX START ---
     env_file:
-      - .env  # This loads your GEMINI_API_KEY from your local file
-    # --- CRITICAL FIX END ---
-    environment:
-      - DATABASE_URL=postgresql://truth_admin:truth_pass@db:5432/truth_db
-
-volumes:
-  postgres_data:
+      - .env  # Loads your API keys

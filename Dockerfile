@@ -1,7 +1,7 @@
 # truth_engine_v1/Dockerfile
 
 # 1. Base Image
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 # 2. System Dependencies (ffmpeg for video processing)
 RUN apt-get update && apt-get install -y \
