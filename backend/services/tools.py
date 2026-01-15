@@ -13,14 +13,14 @@ if not api_key:
 else:
     tavily_client = TavilyClient(api_key=api_key)
 
-# (DELETED TRUSTED_DOMAINS list - allowing full web access)
-
-def search_web(query: str, intent: str = "general") -> dict:
+def search_web(query: str, intent: str = "general") -> list:
     """
-    Searches the web using Tavily with relevance-score gating.
+    Searches the web using Tavily and returns a LIST of results.
+    Each result has: 'title', 'url', 'snippet' (for compatibility with investigator)
     """
     if not tavily_client:
-        return {"error": "Search is disabled (No API Key)"}
+        print("⚠️ Search disabled (No API Key)")
+        return []
 
     print(f"🔎 Searching Web ({intent}): {query}")
 
@@ -31,7 +31,7 @@ def search_web(query: str, intent: str = "general") -> dict:
             max_results=5
         )
 
-        MIN_RELEVANCE_SCORE = 0.5
+        MIN_RELEVANCE_SCORE = 0.0
         clean_results = []
 
         for result in response.get("results", []):
@@ -41,24 +41,46 @@ def search_web(query: str, intent: str = "general") -> dict:
                 print(f"⛔ Skipping low-relevance result (score={score})")
                 continue
 
+            # ✅ CRITICAL: Use 'title' and 'snippet' keys for compatibility
             clean_results.append({
-                "source": result.get("title"),
-                "url": result.get("url"),
+                "title": result.get("title", "Untitled"),
+                "url": result.get("url", ""),
+                "snippet": result.get("content", "")[:1000],  # Keep under 1000 chars
                 "score": score,
-                "content": result.get("content", "")[:4000]
             })
 
-        return {"results": clean_results}
+        print(f"   ✅ Found {len(clean_results)} relevant results")
+        
+        # ✅ CRITICAL: Return a LIST, not a dict
+        return clean_results
 
     except Exception as e:
         print(f"❌ Search Error: {e}")
-        return {"results": [], "error": str(e)}
+        import traceback
+        traceback.print_exc()
+        return []
+
 
 # --- TEST BLOCK ---
 if __name__ == "__main__":
     print("--- Testing Search Tool ---")
-    # Test queries
-    result = search_web("Karna pushed Arjuna's chariot documented OR recorded in original Mahabharata ", intent="prosecutor")
     
-    import json
-    print(json.dumps(result, indent=2))
+    # Test query
+    result = search_web(
+        "Karna pushed Arjuna's chariot documented recorded Mahabharata", 
+        intent="prosecutor"
+    )
+    
+    # Should be a list now
+    print(f"\n📊 Result type: {type(result)}")
+    print(f"📊 Result length: {len(result)}")
+    
+    if result:
+        print("\n✅ First result:")
+        for key, value in result[0].items():
+            if key != "snippet":
+                print(f"   {key}: {value}")
+            else:
+                print(f"   {key}: {value[:100]}...")
+    else:
+        print("\n❌ No results returned")
