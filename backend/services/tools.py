@@ -31,14 +31,13 @@ def search_web(query: str, intent: str = "general") -> list:
             max_results=5
         )
 
-        MIN_RELEVANCE_SCORE = 0.0
+        MIN_RELEVANCE_SCORE = 0.3
         clean_results = []
 
         for result in response.get("results", []):
             score = result.get("score", 0)
 
             if score < MIN_RELEVANCE_SCORE:
-                print(f"⛔ Skipping low-relevance result (score={score})")
                 continue
 
             # ✅ CRITICAL: Use 'title' and 'snippet' keys for compatibility
