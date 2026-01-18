@@ -152,6 +152,129 @@ function LandingPage() {
         };
     }, []); // Empty dependency array = run once on mount
 
+    // ============================================
+    // GSAP SCROLL ANIMATIONS
+    // ============================================
+
+    useEffect(() => {
+        // Only run on desktop/tablet, not mobile
+        if (window.innerWidth < 768) return;
+
+        const loadGSAP = async () => {
+            const { gsap } = await import('gsap');
+            const { ScrollTrigger } = await import('gsap/ScrollTrigger');
+
+            gsap.registerPlugin(ScrollTrigger);
+
+            // Features section - slide in from right
+            gsap.fromTo('.features',
+                { x: 300, opacity: 0 },
+                {
+                    scrollTrigger: {
+                        trigger: '.features',
+                        start: 'top 80%',
+                        end: 'top 40%',
+                        scrub: 1.5,
+                    },
+                    x: 0,
+                    opacity: 1,
+                    ease: 'power2.out'
+                }
+            );
+
+            // Individual feature cards stagger
+            gsap.fromTo('.feature-card',
+                { x: 150, opacity: 0 },
+                {
+                    scrollTrigger: {
+                        trigger: '.features-grid',
+                        start: 'top 75%',
+                        end: 'top 45%',
+                        scrub: 1.5,
+                    },
+                    x: 0,
+                    opacity: 1,
+                    stagger: 0.1,
+                    ease: 'power2.out'
+                }
+            );
+
+            // How It Works section - slide in from left
+            gsap.fromTo('.how-it-works',
+                { x: -300, opacity: 0 },
+                {
+                    scrollTrigger: {
+                        trigger: '.how-it-works',
+                        start: 'top 80%',
+                        end: 'top 40%',
+                        scrub: 1.5,
+                    },
+                    x: 0,
+                    opacity: 1,
+                    ease: 'power2.out'
+                }
+            );
+
+            // Step cards - slide in individually
+            gsap.fromTo('.step-card',
+                { x: -150, opacity: 0 },
+                {
+                    scrollTrigger: {
+                        trigger: '.steps-container',
+                        start: 'top 75%',
+                        end: 'top 45%',
+                        scrub: 1.5,
+                    },
+                    x: 0,
+                    opacity: 1,
+                    stagger: 0.15,
+                    ease: 'power2.out'
+                }
+            );
+
+            // About section - slide in from right
+            gsap.fromTo('.about-section',
+                { x: 300, opacity: 0 },
+                {
+                    scrollTrigger: {
+                        trigger: '.about-section',
+                        start: 'top 80%',
+                        end: 'top 40%',
+                        scrub: 1.5,
+                    },
+                    x: 0,
+                    opacity: 1,
+                    ease: 'power2.out'
+                }
+            );
+
+            // CTA section - slide in from left
+            gsap.fromTo('.cta-section',
+                { x: -300, opacity: 0 },
+                {
+                    scrollTrigger: {
+                        trigger: '.cta-section',
+                        start: 'top 80%',
+                        end: 'top 40%',
+                        scrub: 1.5,
+                    },
+                    x: 0,
+                    opacity: 1,
+                    ease: 'power2.out'
+                }
+            );
+        };
+
+        loadGSAP();
+
+        return () => {
+            // Cleanup ScrollTrigger instances
+            if (window.ScrollTrigger) {
+                window.ScrollTrigger.getAll().forEach(trigger => trigger.kill());
+            }
+        };
+    }, []);
+
     return (
         <div className="landing-page">
             {/* ============================================ */}
@@ -235,6 +358,18 @@ function LandingPage() {
                                 </svg>
                                 <span>See How It Works</span>
                             </a>
+                        </div>
+
+                        {/* Disclaimer Notice */}
+                        <div className="hero-disclaimer">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.5" />
+                                <path d="M10 6v4M10 14h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                            <p>
+                                <strong>Important:</strong> All information is sourced from the internet.
+                                We strongly recommend verifying sources and arguments independently for critical decisions.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -421,7 +556,35 @@ function LandingPage() {
                     </div>
                 </div>
             </section>
-        </div>
+
+            {/* ============================================ */}
+            {/* FOOTER */}
+            {/* ============================================ */}
+            <footer className="footer">
+                <div className="container">
+                    <div className="footer-grid">
+                        {/* Brand Box */}
+                        <div className="footer-box">
+                            <div className="logo">
+                                <span>Truth Engine</span>
+                            </div>
+                            <p className="footer-tagline">AI-Powered Video Fact Checking</p>
+                        </div>
+
+                        {/* Quick Links Box */}
+                        <div className="footer-box">
+                            <h4>Quick Links</h4>
+                            <div className="footer-links-list">
+                                <a href="#features">Features</a>
+                                <a href="#how-it-works">How It Works</a>
+                                <a href="#about">About</a>
+                                <Link to="/try">Try It Now</Link>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </footer>
+        </div >
     );
 }
 

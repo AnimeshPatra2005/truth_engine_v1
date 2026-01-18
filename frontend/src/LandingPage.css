@@ -402,6 +402,38 @@ body {
     background: rgba(255, 255, 255, 0.1);
 }
 
+/* Disclaimer Notice */
+.hero-disclaimer {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    max-width: 700px;
+    margin: 3rem auto 0;
+    padding: 1.25rem 1.5rem;
+    background: rgba(255, 193, 7, 0.1);
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    border-radius: 0.75rem;
+    animation: fadeInUp 0.6s ease-out 0.5s backwards;
+}
+
+.hero-disclaimer svg {
+    flex-shrink: 0;
+    margin-top: 0.125rem;
+    color: #ffc107;
+}
+
+.hero-disclaimer p {
+    color: #e3e3e3;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin: 0;
+}
+
+.hero-disclaimer strong {
+    color: #ffc107;
+    font-weight: 600;
+}
+
 /* ============================================ */
 /* RESPONSIVE DESIGN - Mobile & Tablet */
 /* ============================================ */
@@ -541,6 +573,19 @@ body {
 .landing-page {
     overflow-x: hidden;
     width: 100%;
+}
+
+/* ============================================ */
+/* GSAP SCROLL ANIMATION OPTIMIZATION */
+/* ============================================ */
+/* Optimize sections for GSAP animations */
+.features,
+.how-it-works,
+.about-section,
+.cta-section {
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 /* ============================================ */
@@ -747,5 +792,88 @@ body {
 
     .step-card {
         max-width: 100%;
+    }
+
+    .footer-content {
+        flex-direction: column;
+        gap: 2rem;
+    }
+
+    .footer-links {
+        width: 100%;
+        justify-content: space-around;
+    }
+}
+
+/* ============================================ */
+/* FOOTER */
+/* ============================================ */
+.footer {
+    padding: 4rem 0 3rem;
+    background: rgba(19, 19, 20, 0.95);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.footer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2rem;
+}
+
+.footer-box {
+    background: rgba(30, 31, 32, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    padding: 2rem;
+    transition: all 0.3s;
+}
+
+.footer-box:hover {
+    border-color: rgba(168, 199, 250, 0.3);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.footer-box .logo {
+    margin-bottom: 0.75rem;
+}
+
+.footer-tagline {
+    color: #888;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.footer-box h4 {
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 1.25rem;
+}
+
+.footer-links-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.footer-links-list a {
+    color: #c4c7c5;
+    transition: all 0.2s;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid transparent;
+}
+
+.footer-links-list a:hover {
+    color: #a8c7fa;
+    padding-left: 0.5rem;
+    border-bottom-color: rgba(168, 199, 250, 0.2);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .footer-grid {
+        grid-template-columns: 1fr;
     }
 }
