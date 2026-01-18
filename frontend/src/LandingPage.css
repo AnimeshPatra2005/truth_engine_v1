@@ -1,17 +1,72 @@
-.landing-page {
-    position: relative;
+/* ============================================ */
+/* LANDING PAGE - BASE STYLES */
+/* ============================================ */
+
+/* Reset margins and padding */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
     overflow-x: hidden;
 }
 
+.landing-page {
+    position: relative;
+    overflow-x: hidden;
+    width: 100%;
+}
+
+/* ============================================ */
+/* PARTICLE CANVAS - Interactive Background */
+/* ============================================ */
+/* Fixed position canvas that sits behind all content */
+.particle-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    /* Behind everything */
+    pointer-events: none;
+    /* Don't block clicks on content */
+}
+
+/* ============================================ */
+/* CONTAINER - Responsive width wrapper */
+/* ============================================ */
+.container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 clamp(1rem, 3vw, 2rem);
+    /* Responsive padding */
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* ============================================ */
+/* NAVIGATION BAR */
+/* ============================================ */
 .navbar {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     z-index: 2000;
+    /* Above everything */
     background: rgba(19, 19, 20, 0.7);
+    /* Semi-transparent dark */
     backdrop-filter: blur(20px);
+    /* Glassmorphism effect */
     -webkit-backdrop-filter: blur(20px);
+    /* Safari support */
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
@@ -32,6 +87,7 @@
     font-weight: 700;
     color: #e3e3e3;
     flex-shrink: 0;
+    /* Don't shrink on small screens */
 }
 
 .nav-links {
@@ -63,6 +119,209 @@
     font-size: 0.9rem;
 }
 
+.menu-toggle {
+    display: none;
+    /* Hidden on desktop */
+    flex-direction: column;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.menu-toggle span {
+    width: 24px;
+    height: 2px;
+    background: #c4c7c5;
+    transition: all 0.3s;
+}
+
+/* ============================================ */
+/* HERO SECTION - Main Landing Area */
+/* ============================================ */
+.hero {
+    position: relative;
+    min-height: 100vh;
+    /* Full viewport height */
+    display: flex;
+    align-items: center;
+    padding-top: 80px;
+    /* Space for fixed navbar */
+    overflow: hidden;
+}
+
+/* Background with animated gradient orbs */
+.hero-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+}
+
+/* Gradient orbs - colored circles with blur */
+.gradient-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    /* Heavy blur for soft glow */
+    opacity: 0.3;
+    animation: float 8s ease-in-out infinite;
+    /* Floating animation */
+}
+
+.orb-1 {
+    width: 500px;
+    height: 500px;
+    background: linear-gradient(135deg, #4285f4, #a8c7fa);
+    /* Blue gradient */
+    top: -200px;
+    left: -100px;
+    animation-delay: 0s;
+}
+
+.orb-2 {
+    width: 400px;
+    height: 400px;
+    background: linear-gradient(135deg, #d96570, #f8d7da);
+    /* Pink gradient */
+    top: 50%;
+    right: -150px;
+    animation-delay: 2s;
+    /* Staggered animation */
+}
+
+.orb-3 {
+    width: 350px;
+    height: 350px;
+    background: linear-gradient(135deg, #9b72cb, #c4eed0);
+    /* Purple-green gradient */
+    bottom: -100px;
+    left: 50%;
+    animation-delay: 4s;
+}
+
+/* Floating animation for orbs */
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translate(0, 0);
+    }
+
+    33% {
+        transform: translate(30px, -30px);
+    }
+
+    66% {
+        transform: translate(-20px, 20px);
+    }
+}
+
+.hero-content {
+    position: relative;
+    z-index: 1;
+    /* Above background */
+    text-align: center;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* Badge - small pill-shaped indicator */
+.hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(168, 199, 250, 0.1);
+    border: 1px solid rgba(168, 199, 250, 0.2);
+    border-radius: 2rem;
+    /* Fully rounded */
+    color: #a8c7fa;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 2rem;
+    animation: fadeInUp 0.6s ease-out;
+    /* Fade in from bottom */
+}
+
+.badge-dot {
+    width: 8px;
+    height: 8px;
+    background: #a8c7fa;
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+    /* Pulsing dot */
+}
+
+/* Pulse animation for badge dot */
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.hero-title {
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    /* Responsive font size */
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+    color: #ffffff;
+    animation: fadeInUp 0.6s ease-out 0.1s backwards;
+    /* Delayed fade in */
+}
+
+/* Gradient text effect */
+.gradient-text {
+    background: linear-gradient(135deg, #4285f4, #d96570);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.hero-description {
+    font-size: 1.25rem;
+    line-height: 1.7;
+    color: #c4c7c5;
+    margin-bottom: 2.5rem;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+    animation: fadeInUp 0.6s ease-out 0.2s backwards;
+}
+
+.hero-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 4rem;
+    animation: fadeInUp 0.6s ease-out 0.3s backwards;
+}
+
+/* Fade in from bottom animation */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Primary button - gradient background */
 .btn-primary {
     display: inline-flex;
     align-items: center;
@@ -81,30 +340,84 @@
 
 .btn-primary:hover {
     transform: translateY(-2px);
+    /* Lift up on hover */
     box-shadow: 0 6px 20px 0 rgba(66, 133, 244, 0.5);
 }
 
-.menu-toggle {
-    display: none;
-    flex-direction: column;
-    gap: 4px;
-    background: none;
-    border: none;
+/* Secondary button - transparent with border */
+.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 2rem;
+    background: rgba(40, 42, 44, 0.6);
+    color: #e3e3e3;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.75rem;
+    font-weight: 600;
+    font-size: 1.05rem;
+    transition: all 0.3s;
     cursor: pointer;
 }
 
-.menu-toggle span {
-    width: 24px;
-    height: 2px;
-    background: #c4c7c5;
-    transition: all 0.3s;
+.btn-secondary:hover {
+    background: rgba(40, 42, 44, 0.8);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
+.btn-large {
+    padding: 1rem 2rem;
+    font-size: 1.05rem;
+}
+
+/* Statistics display */
+.hero-stats {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+    animation: fadeInUp 0.6s ease-out 0.4s backwards;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #ffffff;
+    margin-bottom: 0.25rem;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: #888;
+}
+
+.stat-divider {
+    width: 1px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================ */
+/* RESPONSIVE DESIGN - Mobile & Tablet */
+/* ============================================ */
+
+/* Tablets (768px and below) */
 @media (max-width: 768px) {
     .menu-toggle {
         display: flex;
+        /* Show hamburger menu */
     }
 
+    .container {
+        padding: 0 1rem;
+    }
+
+    /* Mobile menu - slides down from top */
     .nav-links {
         position: absolute;
         top: 100%;
@@ -116,6 +429,7 @@
         padding: 1.5rem;
         gap: 1rem;
         transform: translateY(-100%);
+        /* Hidden above */
         opacity: 0;
         pointer-events: none;
         transition: all 0.3s;
@@ -124,6 +438,7 @@
 
     .nav-links.active {
         transform: translateY(0);
+        /* Slide down */
         opacity: 1;
         pointer-events: all;
     }
@@ -140,4 +455,90 @@
         padding: 0.75rem 1.5rem;
         font-size: 1rem;
     }
+
+    .hero {
+        padding-top: 100px;
+    }
+
+    .hero-content {
+        padding: 1.5rem 1rem;
+    }
+
+    .hero-title {
+        font-size: clamp(1.75rem, 8vw, 2.5rem);
+    }
+
+    .hero-description {
+        font-size: 1rem;
+    }
+
+    .hero-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .hero-actions .btn-primary,
+    .hero-actions .btn-secondary {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .hero-stats {
+        gap: 1rem;
+        flex-direction: column;
+    }
+
+    .stat-divider {
+        display: none;
+        /* Hide dividers on mobile */
+    }
+
+    .stat-number {
+        font-size: 1.5rem;
+    }
+}
+
+/* Small mobile devices (480px and below) */
+@media (max-width: 480px) {
+    .logo {
+        font-size: 1.1rem;
+    }
+
+    .logo svg {
+        width: 28px;
+        height: 28px;
+    }
+
+    .hero-badge {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.8rem;
+    }
+
+    .hero-title {
+        font-size: 1.75rem;
+    }
+
+    .hero-description {
+        font-size: 0.95rem;
+    }
+
+    .btn-large {
+        padding: 0.85rem 1.5rem;
+        font-size: 0.95rem;
+    }
+}
+
+/* Ensure no horizontal overflow */
+* {
+    max-width: 100%;
+}
+
+html,
+body {
+    overflow-x: hidden;
+}
+
+.landing-page {
+    overflow-x: hidden;
+    width: 100%;
 }
