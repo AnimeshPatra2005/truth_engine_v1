@@ -1,8 +1,10 @@
 :root {
-  --primary-blue: #4285f4;
-  --primary-pink: #d96570;
-  --dark-bg: #0a0e27;
-  --light-text: #e8eaf6;
+  --bg-color: #131314;
+  --sidebar-bg: #1e1f20;
+  --input-bg: #282a2c;
+  --text-primary: #e3e3e3;
+  --text-secondary: #c4c7c5;
+  --accent-blue: #a8c7fa;
 
   --spacing-sm: 1rem;
   --spacing-md: 1.5rem;
@@ -30,20 +32,24 @@
 
 a {
   font-weight: 500;
-  color: var(--primary-blue);
+  color: var(--accent-blue);
   text-decoration: inherit;
 }
 
 a:hover {
-  color: var(--primary-pink);
+  color: #ffffff;
 }
 
 body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+  font-family: var(--font-body);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  line-height: 1.6;
   min-height: 100vh;
+  overflow-x: hidden;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 h1 {
