@@ -542,3 +542,210 @@ body {
     overflow-x: hidden;
     width: 100%;
 }
+
+/* ============================================ */
+/* FEATURES SECTION */
+/* ============================================ */
+.features {
+    padding: 6rem 0;
+    background: rgba(30, 31, 32, 0.3);
+}
+
+.section-header {
+    text-align: center;
+    margin-bottom: 4rem;
+}
+
+.section-title {
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 800;
+    margin-bottom: 1rem;
+    color: #ffffff;
+}
+
+.section-description {
+    font-size: 1.15rem;
+    color: #c4c7c5;
+}
+
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+.feature-card {
+    background: rgba(30, 31, 32, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    padding: 2rem;
+    transition: all 0.3s;
+}
+
+.feature-card:hover {
+    border-color: rgba(168, 199, 250, 0.3);
+    transform: translateY(-4px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.feature-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(66, 133, 244, 0.2), rgba(155, 114, 203, 0.2));
+    border-radius: 0.75rem;
+    margin-bottom: 1.5rem;
+    color: #a8c7fa;
+}
+
+.feature-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: #ffffff;
+}
+
+.feature-description {
+    color: #c4c7c5;
+    line-height: 1.6;
+}
+
+/* ============================================ */
+/* HOW IT WORKS SECTION */
+/* ============================================ */
+.how-it-works {
+    padding: 6rem 0;
+}
+
+.steps-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+    margin-top: 3rem;
+}
+
+.step-card {
+    flex: 1;
+    min-width: 250px;
+    max-width: 300px;
+    background: rgba(30, 31, 32, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    padding: 2rem;
+    text-align: center;
+    transition: all 0.3s;
+}
+
+.step-card:hover {
+    transform: translateY(-8px);
+    border-color: rgba(168, 199, 250, 0.3);
+}
+
+.step-number {
+    font-size: 3rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #4285f4, #d96570);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 1rem;
+}
+
+.step-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: #ffffff;
+}
+
+.step-description {
+    color: #c4c7c5;
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+}
+
+.step-visual {
+    display: flex;
+    justify-content: center;
+    color: #a8c7fa;
+}
+
+.step-arrow {
+    font-size: 2rem;
+    color: #666;
+    flex-shrink: 0;
+}
+
+/* ============================================ */
+/* ABOUT SECTION */
+/* ============================================ */
+.about-section {
+    padding: 4rem 0;
+    background: rgba(30, 31, 32, 0.3);
+}
+
+.about-content {
+    max-width: 800px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.about-text {
+    font-size: 1.15rem;
+    line-height: 1.8;
+    color: #c4c7c5;
+}
+
+/* ============================================ */
+/* CTA SECTION */
+/* ============================================ */
+.cta-section {
+    padding: 6rem 0;
+    background: linear-gradient(135deg, rgba(66, 133, 244, 0.1), rgba(217, 101, 112, 0.1));
+}
+
+.cta-content {
+    text-align: center;
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.cta-title {
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 800;
+    margin-bottom: 1rem;
+    color: #ffffff;
+}
+
+.cta-description {
+    font-size: 1.15rem;
+    color: #c4c7c5;
+    margin-bottom: 2rem;
+}
+
+/* ============================================ */
+/* RESPONSIVE - Mobile & Tablet */
+/* ============================================ */
+@media (max-width: 768px) {
+    .features-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+
+    .steps-container {
+        flex-direction: column;
+    }
+
+    .step-arrow {
+        transform: rotate(90deg);
+    }
+
+    .step-card {
+        max-width: 100%;
+    }
+}
