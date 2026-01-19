@@ -41,6 +41,92 @@ function TryPage() {
         setCurrentResult(item.data);
     };
 
+    // Main handler - decides whether to upload video or analyze text
+    const handleSearch = async () => {
+        if (fileInputRef.current.files[0]) {
+            // User selected a video file
+            await processFileUpload(fileInputRef.current.files[0]);
+        } else if (inputText.trim()) {
+            // User typed text
+            await processTextAnalysis(inputText.trim());
+        } else {
+            alert("Please upload a video or type your query.");
+        }
+    };
+
+    // Handle video file upload
+    const processFileUpload = async (file) => {
+        setLoading(true);
+        setCurrentResult(null);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const response = await axios.post(
+                "http://localhost:8000/api/upload-video",
+                formData,
+                { headers: { "Content-Type": "multipart/form-data" } }
+            );
+
+            const resultData = response.data;
+
+            // Save to history
+            const newHistoryItem = {
+                id: Date.now(),
+                title: file.name,
+                data: resultData
+            };
+
+            const updatedHistory = [newHistoryItem, ...history];
+            setHistory(updatedHistory);
+            localStorage.setItem('truth_history', JSON.stringify(updatedHistory));
+
+            setCurrentResult(resultData);
+        } catch (err) {
+            console.error(err);
+            alert("Analysis failed. Check backend connection.");
+        } finally {
+            setLoading(false);
+            setFileName("");
+            fileInputRef.current.value = "";
+        }
+    };
+
+    // Handle text-only analysis
+    const processTextAnalysis = async (text) => {
+        setLoading(true);
+        setCurrentResult(null);
+
+        try {
+            const response = await axios.post(
+                "http://localhost:8000/api/analyze-text",
+                { text: text }
+            );
+
+            const resultData = response.data;
+
+            // Save to history
+            const newHistoryItem = {
+                id: Date.now(),
+                title: text.substring(0, 50) + (text.length > 50 ? "..." : ""),
+                data: resultData
+            };
+
+            const updatedHistory = [newHistoryItem, ...history];
+            setHistory(updatedHistory);
+            localStorage.setItem('truth_history', JSON.stringify(updatedHistory));
+
+            setCurrentResult(resultData);
+        } catch (err) {
+            console.error(err);
+            alert("Analysis failed. Check backend connection.");
+        } finally {
+            setLoading(false);
+            setInputText("");
+        }
+    };
+
     return (
         <div className="app-container">
             {/* Sidebar with navigation */}
@@ -127,9 +213,10 @@ function TryPage() {
                             placeholder={fileName ? `Ready to analyze: ${fileName}` : "Upload a video or type your query to begin..."}
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                         />
 
-                        <button className="send-btn" onClick={() => { }}>
+                        <button className="send-btn" onClick={handleSearch}>
                             <FaPaperPlane />
                         </button>
                     </div>
