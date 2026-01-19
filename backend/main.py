@@ -24,16 +24,5 @@ def health_check():
 
 
 if __name__ == "__main__":
-    print("\n🚀 Truth Engine - Choose Mode:")
-    print("1. API Server (FastAPI)")
-    print("2. CLI Pipeline (Video Upload)")
-    choice = input("\nEnter choice (1 or 2): ").strip()
-    
-    if choice == "1":
-        print("Starting Truth Engine Server...")
-        uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-    elif choice == "2":
-        video_path = input("📹 Enter video file path: ").strip('"').strip("'")
-        run_full_pipeline(video_path)
-    else:
-        print("Invalid choice. Exiting.")
+    print("\n🚀 Truth Engine - Starting Web Server...")
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
