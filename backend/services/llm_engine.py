@@ -41,6 +41,56 @@ llm_search = ChatGoogleGenerativeAI(
 # 2. ROBUST UTILS & TOOLS
 # ==============================================================================
 
+def clean_llm_json(raw_text: str) -> str:
+    """
+    Clean LLM-generated JSON before parsing.
+    Handles common issues like markdown formatting, escaped characters, and trailing commas.
+    
+    Args:
+        raw_text: Raw text from LLM that should contain JSON
+        
+    Returns:
+        Cleaned JSON string ready for parsing
+    """
+    if not raw_text:
+        return "[]"
+    
+    text = str(raw_text).strip()
+    
+    # 1. Remove markdown code blocks (```json ... ``` or ``` ... ```)
+    text = re.sub(r'^```json\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^```\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'```', '', text)
+    
+    # 2. Fix escaped newlines (literal \\n instead of actual newlines)
+    #Gemini issue should be fixed 
+    text = text.replace('\\n', ' ')
+    text = text.replace('\n', ' ')
+    
+    # 3. Fix double-escaped quotes (\\" → ")
+    text = text.replace('\\"', '"')
+    
+    # 4. Remove trailing commas before } or ] (invalid JSON)
+    text = re.sub(r',(\s*[}\]])', r'\1', text)
+    
+    # 5. Fix single quotes to double quotes (JSON requires double quotes)
+    text = re.sub(r"'([^']*)':", r'"\1":', text)  # Keys
+    
+    # 6. Remove extra whitespace
+    text = ' '.join(text.split())
+    
+    # 7. Extract JSON if embedded in other text
+    if '{' in text and '}' in text:
+        start = text.find('{')
+        end = text.rfind('}') + 1
+        text = text[start:end]
+    elif '[' in text and ']' in text:
+        start = text.find('[')
+        end = text.rfind(']') + 1
+        text = text[start:end]
+    
+    return text.strip()
+
 def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIES_ON_QUOTA):
     """Bulletproof JSON invoker with intelligent rate limiting and quota handling."""
     global api_call_count
@@ -55,6 +105,7 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
             
             response = model.invoke(final_prompt)
             
+            # Extract content from response
             if hasattr(response, 'content'):
                 content = response.content
                 if isinstance(content, list):
@@ -68,15 +119,21 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
             else:
                 content = str(response)
             
-            content = re.sub(r'```json\s*', '', content).replace('```', '').strip()
+            # ✅ USE CENTRALIZED JSON CLEANER
+            cleaned_content = clean_llm_json(content)
             
-            if "{" in content and "}" in content:
-                content = content[content.find("{"):content.rfind("}")+1]
-                
-            parsed_dict = json.loads(content)
-            validated_obj = pydantic_object(**parsed_dict)
-            print(f"   ✅ API Call #{api_call_count} successful")
-            return validated_obj.model_dump()
+            # Parse and validate
+            try:
+                parsed_dict = json.loads(cleaned_content)
+                validated_obj = pydantic_object(**parsed_dict)
+                print(f"   ✅ API Call #{api_call_count} successful")
+                return validated_obj.model_dump()
+            except json.JSONDecodeError as je:
+                # Log the error with raw content for debugging
+                print(f"   ❌ JSON Parse Error: {je}")
+                print(f"   📄 Raw response (first 300 chars): {content[:300]}")
+                print(f"   🧹 Cleaned content (first 300 chars): {cleaned_content[:300]}")
+                raise  # Re-raise to trigger retry logic
 
         except Exception as e:
             error_str = str(e)
@@ -629,60 +686,23 @@ Return ONLY the JSON array, no explanation or preamble.
             if isinstance(content, list):
                 content = ' '.join([str(b) for b in content])
             
-            # ROBUST JSON EXTRACTION
-            content = content.strip()
+            # ✅ USE CENTRALIZED JSON CLEANER
+            cleaned_content = clean_llm_json(content)
             
-            # Remove markdown fences
-            content = re.sub(r'```json\s*', '', content)
-            content = re.sub(r'```\s*', '', content)
-            content = content.strip()
-            
-            # Extract JSON array - handle multiple formats
-            if "[" in content and "]" in content:
-                # Find the outermost array
-                start = content.find("[")
-                end = content.rfind("]") + 1
-                content = content[start:end]
-            else:
-                # No array found - treat as empty
+            # If no JSON found, default to empty array
+            if not cleaned_content or cleaned_content == "[]":
                 print(f"      ⚠️ No JSON array found in response for Claim {claim.id}")
-                content = "[]"
-            
-            # Parse JSON
-            # Parse JSON with comprehensive error recovery
-            try:
-                parsed_array = json.loads(content)
-            except json.JSONDecodeError as je:
-                print(f"      ❌ JSON parsing failed for Claim {claim.id}: {je}")
-                print(f"      📄 Raw content (first 200 chars): {content[:200]}")
-                
-                # AGGRESSIVE RECOVERY ATTEMPTS
+                parsed_array = []
+            else:
+                # Parse JSON with error handling
                 try:
-                    # Step 1: Fix escaped newlines (literal \n instead of actual newlines)
-                    content_fixed = content.replace('\\n', '').replace('\n', '')
-                    
-                    # Step 2: Fix single quotes
-                    content_fixed = content_fixed.replace("'", '"')
-                    
-                    # Step 3: Remove any extra whitespace
-                    content_fixed = ' '.join(content_fixed.split())
-                    
-                    # Step 4: Try parsing again
-                    parsed_array = json.loads(content_fixed)
-                    print(f"      ✅ Recovered after fixing escaped newlines")
-                    
-                except Exception as e2:
-                    print(f"      ❌ Recovery attempt 1 failed: {e2}")
-                    
-                    # Step 5: Last resort - try to add quotes to unquoted keys
-                    try:
-                        content_fixed = re.sub(r'(\w+):', r'"\1":', content)
-                        parsed_array = json.loads(content_fixed)
-                        print(f"      ✅ Recovered after adding key quotes")
-                    except:
-                        print(f"      ❌ All recovery attempts failed, using empty array")
-                        parsed_array = []
-                
+                    parsed_array = json.loads(cleaned_content)
+                except json.JSONDecodeError as je:
+                    print(f"      ❌ JSON parsing failed for Claim {claim.id}: {je}")
+                    print(f"      📄 Raw content (first 200 chars): {content[:200]}")
+                    print(f"      🧹 Cleaned content (first 200 chars): {cleaned_content[:200]}")
+                    print(f"      ⚠️ Using empty array as fallback")
+                    parsed_array = []
             
             for item_data in parsed_array:
                 try:
