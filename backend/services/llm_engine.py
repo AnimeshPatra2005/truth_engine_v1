@@ -26,13 +26,13 @@ MAX_RETRIES_ON_QUOTA = 3
 api_call_count = 0
 
 llm_analysis = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"), 
     temperature=0
 )
 
 llm_search = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),   
     temperature=0.4
 )
@@ -41,21 +41,44 @@ llm_search = ChatGoogleGenerativeAI(
 # 2. ROBUST UTILS & TOOLS
 # ==============================================================================
 
-def clean_llm_json(raw_text: str) -> str:
+def clean_llm_json(raw_text: str, expect_array: bool = None) -> str:
     """
     Clean LLM-generated JSON before parsing.
     Handles common issues like markdown formatting, escaped characters, and trailing commas.
     
     Args:
         raw_text: Raw text from LLM that should contain JSON
+        expect_array: If True, prioritize array extraction. If False, prioritize object extraction.
+                     If None, auto-detect based on what's found first.
         
     Returns:
         Cleaned JSON string ready for parsing
     """
     if not raw_text:
-        return "[]"
+        return "[]" if expect_array else "{}"
     
     text = str(raw_text).strip()
+    
+    # 0. Handle Gemini's dictionary response format: {'type': 'text', 'text': '...'}
+    # This happens when response.content is a dict instead of a string
+    if text.startswith("{'type':") or text.startswith('{"type":'):
+        # Try to extract the actual JSON from the 'text' field
+        try:
+            # First, try to parse it as a Python dict representation
+            import ast
+            parsed = ast.literal_eval(text)
+            if isinstance(parsed, dict) and 'text' in parsed:
+                text = parsed['text']
+        except:
+            # If that fails, use regex to extract content between 'text': ' and the last '
+            match = re.search(r"'text':\s*'(.*)'(?:\s*})?$", text, re.DOTALL)
+            if match:
+                text = match.group(1)
+            else:
+                # Try with double quotes
+                match = re.search(r'"text":\s*"(.*)"(?:\s*})?$', text, re.DOTALL)
+                if match:
+                    text = match.group(1)
     
     # 1. Remove markdown code blocks (```json ... ``` or ``` ... ```)
     text = re.sub(r'^```json\s*', '', text, flags=re.MULTILINE)
@@ -63,31 +86,72 @@ def clean_llm_json(raw_text: str) -> str:
     text = re.sub(r'```', '', text)
     
     # 2. Fix escaped newlines (literal \\n instead of actual newlines)
-    #Gemini issue should be fixed 
     text = text.replace('\\n', ' ')
     text = text.replace('\n', ' ')
     
-    # 3. Fix double-escaped quotes (\\" → ")
+    # 3. Fix double-escaped quotes (\\\" → ")
     text = text.replace('\\"', '"')
     
     # 4. Remove trailing commas before } or ] (invalid JSON)
     text = re.sub(r',(\s*[}\]])', r'\1', text)
     
-    # 5. Fix single quotes to double quotes (JSON requires double quotes)
-    text = re.sub(r"'([^']*)':", r'"\1":', text)  # Keys
-    
-    # 6. Remove extra whitespace
+    # 5. Remove extra whitespace
     text = ' '.join(text.split())
     
-    # 7. Extract JSON if embedded in other text
-    if '{' in text and '}' in text:
-        start = text.find('{')
-        end = text.rfind('}') + 1
-        text = text[start:end]
-    elif '[' in text and ']' in text:
-        start = text.find('[')
-        end = text.rfind(']') + 1
-        text = text[start:end]
+    # 6. Extract JSON based on context (array vs object)
+    has_array = '[' in text and ']' in text
+    has_object = '{' in text and '}' in text
+    
+    if expect_array is True:
+        # Caller expects array - prioritize array extraction
+        if has_array:
+            start = text.find('[')
+            end = text.rfind(']') + 1
+            text = text[start:end]
+        elif has_object:
+            # Found object but expected array - check if multiple objects
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            text = text[start:end]
+            if '}{' in text:
+                # Multiple objects concatenated - wrap in array
+                text = '[' + text.replace('}{', '},{') + ']'
+            else:
+                # Single object - wrap in array
+                text = '[' + text + ']'
+    
+    elif expect_array is False:
+        # Caller expects object - prioritize object extraction
+        if has_object:
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            text = text[start:end]
+            # DO NOT wrap multiple objects - let it fail so we can debug
+        elif has_array:
+            # Found array but expected object - extract first element
+            start = text.find('[')
+            end = text.rfind(']') + 1
+            array_text = text[start:end]
+            try:
+                import json
+                parsed = json.loads(array_text)
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    text = json.dumps(parsed[0])
+                else:
+                    text = array_text  # Keep as-is, will fail later
+            except:
+                text = array_text  # Keep as-is, will fail later
+    
+    else:
+        # Auto-detect (legacy behavior) - prioritize array
+        if has_array:
+            start = text.find('[')
+            end = text.rfind(']') + 1
+            text = text[start:end]
+        elif has_object:
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            text = text[start:end]
     
     return text.strip()
 
@@ -108,29 +172,34 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
             # Extract content from response
             if hasattr(response, 'content'):
                 content = response.content
-                if isinstance(content, list):
+                
+                # Handle different response formats
+                if isinstance(content, dict):
+                    # Gemini sometimes returns {'type': 'text', 'text': '...'}
+                    content = content.get('text', str(content))
+                elif isinstance(content, list):
                     content = ' '.join([
                         block.get('text', '') if isinstance(block, dict) 
                         else str(block) 
                         for block in content
-                    ])
+                    ]) 
                 elif not isinstance(content, str):
                     content = str(content)
             else:
                 content = str(response)
             
-            # ✅ USE CENTRALIZED JSON CLEANER
-            cleaned_content = clean_llm_json(content)
+            #  USE CENTRALIZED JSON CLEANER (expects object for Pydantic validation)
+            cleaned_content = clean_llm_json(content, expect_array=False)
             
             # Parse and validate
             try:
                 parsed_dict = json.loads(cleaned_content)
                 validated_obj = pydantic_object(**parsed_dict)
-                print(f"   ✅ API Call #{api_call_count} successful")
+                print(f"    API Call #{api_call_count} successful")
                 return validated_obj.model_dump()
             except json.JSONDecodeError as je:
                 # Log the error with raw content for debugging
-                print(f"   ❌ JSON Parse Error: {je}")
+                print(f"    JSON Parse Error: {je}")
                 print(f"   📄 Raw response (first 300 chars): {content[:300]}")
                 print(f"   🧹 Cleaned content (first 300 chars): {cleaned_content[:300]}")
                 raise  # Re-raise to trigger retry logic
@@ -145,20 +214,119 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
                 else:
                     retry_delay = 60
                 
-                print(f"   ⚠️ QUOTA EXHAUSTED (Attempt {attempt + 1}/{max_retries})")
+                print(f"    QUOTA EXHAUSTED (Attempt {attempt + 1}/{max_retries})")
                 
                 if attempt < max_retries - 1:
-                    print(f"   ⏱️ Waiting {retry_delay:.1f} seconds before retry...")
+                    print(f"    Waiting {retry_delay:.1f} seconds before retry...")
                     time.sleep(retry_delay)
                     continue
                 else:
-                    print(f"   ❌ All retries exhausted. API quota likely depleted for today.")
+                    print(f"    All retries exhausted. API quota likely depleted for today.")
                     return {}
             else:
-                print(f"   ⚠️ LLM/JSON ERROR: {e}")
+                print(f"    LLM/JSON ERROR: {e}")
                 return {}
     
     return {}
+
+def safe_invoke_json_array(model, prompt_text, item_class, max_retries=MAX_RETRIES_ON_QUOTA):
+    """
+    Specialized invoker for JSON arrays.
+    Returns list of validated objects.
+    """
+    global api_call_count
+    
+    # Create example schema for a single item
+    example_item = item_class.model_json_schema()
+    final_prompt = f"""{prompt_text}
+
+IMPORTANT: Return ONLY a valid JSON ARRAY of objects matching this schema:
+[
+  {json.dumps(example_item)},
+  {json.dumps(example_item)},
+  ...
+]
+
+Rules:
+- Top level MUST be an array: [ ... ]
+- Each item must match the schema
+- No markdown, no explanations
+- If no items, return empty array: []
+"""
+    
+    for attempt in range(max_retries):
+        try:
+            api_call_count += 1
+            print(f"   ⏳ [API Call #{api_call_count}] Waiting {API_CALL_DELAY} seconds before call...")
+            time.sleep(API_CALL_DELAY)
+            
+            response = model.invoke(final_prompt)
+            
+            # Extract content
+            if hasattr(response, 'content'):
+                content = response.content
+                if isinstance(content, dict):
+                    content = content.get('text', str(content))
+                elif isinstance(content, list):
+                    content = ' '.join([
+                        block.get('text', '') if isinstance(block, dict) else str(block)
+                        for block in content
+                    ])
+                elif not isinstance(content, str):
+                    content = str(content)
+            else:
+                content = str(response)
+            
+            # Clean expecting array
+            cleaned_content = clean_llm_json(content, expect_array=True)
+            
+            try:
+                parsed_array = json.loads(cleaned_content)
+                
+                if not isinstance(parsed_array, list):
+                    print(f"    Expected array but got {type(parsed_array)}")
+                    return []
+                
+                # Validate each item
+                validated_items = []
+                for i, item_data in enumerate(parsed_array):
+                    try:
+                        validated_obj = item_class(**item_data)
+                        validated_items.append(validated_obj.model_dump())
+                    except Exception as validation_err:
+                        print(f"    Item {i} validation failed: {validation_err}")
+                        continue
+                
+                print(f"    API Call #{api_call_count} successful - {len(validated_items)} items")
+                return validated_items
+                
+            except json.JSONDecodeError as je:
+                print(f"    JSON Parse Error: {je}")
+                print(f"   📄 Raw response (first 300 chars): {content[:300]}")
+                print(f"   🧹 Cleaned content (first 300 chars): {cleaned_content[:300]}")
+                raise
+
+        except Exception as e:
+            error_str = str(e)
+            
+            if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
+                retry_match = re.search(r'retry in (\d+\.?\d*)s', error_str)
+                retry_delay = float(retry_match.group(1)) + 2 if retry_match else 60
+                
+                print(f"    QUOTA EXHAUSTED (Attempt {attempt + 1}/{max_retries})")
+                
+                if attempt < max_retries - 1:
+                    print(f"    Waiting {retry_delay:.1f} seconds before retry...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    print(f"    All retries exhausted.")
+                    return []
+            else:
+                print(f"    Error: {e}")
+                return []
+    
+    return []
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
 def check_google_fact_check_tool(query: str):
@@ -180,102 +348,21 @@ def check_google_fact_check_tool(query: str):
             return f"MATCH: {review['publisher']['name']} rates this '{review['textualRating']}' ({review['url']})"
         return "No fact check found."
     except Exception as e:
-        print(f"   ⚠️ Fact Check Tool Error: {e}")
+        print(f"    Fact Check Tool Error: {e}")
         return "Tool Unavailable"
 
 def consensus_search_tool(claim: str):
     """Tool: Performs Majority Vote search with Network Safety."""
     # EXCLUDE unreliable sources from consensus check
     query = f'is it true that "{claim}" -site:quora.com -site:reddit.com -site:stackexchange.com -site:twitter.com -site:x.com -site:medium.com -site:linkedin.com'
-    print(f"   📊 CONSENSUS CHECK: {query}")
+    print(f"    CONSENSUS CHECK: {query}")
     try:
         results = search_web(query)
         if not results: return "No results found."
         return str(results)[:5000]
     except Exception as e:
-        print(f"      ⚠️ Network Error during consensus check: {e}")
+        print(f"       Network Error during consensus check: {e}")
         return "Search failed due to network error."
-
-def build_prosecutor_query(claim_text: str) -> str:
-    """Hardcoded prosecutor query builder - no LLM hallucination risk."""
-    # Prosecutor tries to DISPROVE the claim
-    keywords = "debunked OR false OR myth OR fake OR misleading OR contradiction OR disproven"
-    specifics = "supporting facts OR evidence OR proof OR citation"
-    query = f'"{claim_text}" AND ({keywords}) AND ({specifics})'
-    return query
-
-def build_defender_query(claim_text: str) -> str:
-    """Hardcoded defender query builder - no LLM hallucination risk."""
-    # Defender tries to SUPPORT the claim
-    keywords = "proven OR confirmed OR verified OR true OR evidence OR citation OR proof"
-    specifics = "supporting facts OR evidence OR specific details"
-    query = f'"{claim_text}" AND ({keywords}) AND ({specifics})'
-    return query
-
-def generate_optimized_queries(claims: List["ClaimUnit"]) -> dict:
-    """
-    ONE API CALL: Generate prosecutor + defender queries for ALL claims.
-    Then append specific evidence terms in Python (deterministic, not LLM-dependent).
-    Returns dict: {claim_id: {"prosecutor": "...", "defender": "..."}}
-    """
-    claims_text = ""
-    for c in claims:
-        claims_text += f"\nClaim {c.id} ({c.topic_category}): {c.claim_text}"
-    
-    prompt = f"""
-    Generate web search query keywords for fact-checking. ONE CALL for all claims.
-    
-    CLAIMS TO GENERATE QUERIES FOR:
-    {claims_text}
-    
-    YOUR TASK:
-    For EACH claim above, extract 5-7 KEY TERMS (keywords only, no full sentences).
-    Return JSON array with:
-    - claim_id
-    - base_query: The extracted keywords (e.g., "Akash Deepav ritual ancestors ancient")
-    
-    QUERY STYLE:
-    - Extract main concepts, proper nouns, specific terms from claim
-    - No character limit, keep keywords focused
-    - Broken English OK - web search is smart
-    - NO need to add "false", "confirmed", etc - we'll add those in Python
-    """
-    
-    data = safe_invoke_json(llm_search, prompt, OptimizedQueries)
-    
-    if not data:
-        print("   ⚠️ Query generation failed, returning empty dict")
-        return {}
-    
-    # Post-process: append prosecutor/defender terms in Python
-    # Include diverse evidence types: textual, statistical, legal, expert, documentary, factual
-    result = {}
-    if "queries" in data:
-        for q in data["queries"]:
-            # FIXED: Use base_query instead of prosecutor_query
-            base = q.get("base_query", "")
-            
-            # CRITICAL: Remove "not" from base query - it negates the search!
-            base = base.replace(" not ", " ").replace(" NOT ", " ").strip()
-            
-            # Append prosecutor-specific terms (deterministic, not LLM-dependent)
-            # Covers: false claims, debunked myths, contradictions, textual evidence, court rulings, statistics disproving it
-            prosecutor_query = f"{base} false debunked myth contradicts textual evidence court ruling disproved statistics data study refuted"
-            
-            # Append defender-specific terms (deterministic, not LLM-dependent)
-            # Covers: verified claims, confirmed facts, textual evidence, legal support, expert testimony, supporting studies/data
-            defender_query = f"{base} confirmed verified proven true textual evidence court ruling expert testimony study data statistics supporting details facts"
-            
-            result[q["claim_id"]] = {
-                "prosecutor": prosecutor_query,
-                "defender": defender_query
-            }
-            
-            print(f"      [Claim {q['claim_id']}]")
-            print(f"         🔴 Prosecutor: {prosecutor_query}")
-            print(f"         🟢 Defender:   {defender_query}")
-    
-    return result
 
 def intelligent_quote_summarizer(quote: str, claim_context: str) -> str:
     """
@@ -302,8 +389,8 @@ def intelligent_quote_summarizer(quote: str, claim_context: str) -> str:
         - Do NOT lose any critical information through summarization
         
         Example transformations:
-        ❌ BAD: "According to..." (loses the actual content)
-        ✅ GOOD: "Study shows 87% of X resulted in Y (Journal Z, 2024)"
+         BAD: "According to..." (loses the actual content)
+         GOOD: "Study shows 87% of X resulted in Y (Journal Z, 2024)"
         
         Return ONLY the one-liner, no explanation.
         """
@@ -312,8 +399,16 @@ def intelligent_quote_summarizer(quote: str, claim_context: str) -> str:
         
         if hasattr(response, 'content'):
             content = response.content
-            if isinstance(content, list):
-                content = ' '.join([str(b) for b in content])
+            
+            # Handle different response formats
+            if isinstance(content, dict):
+                # Gemini sometimes returns {'type': 'text', 'text': '...'}
+                content = content.get('text', str(content))
+            elif isinstance(content, list):
+                content = ' '.join([
+                    item.get('text', str(item)) if isinstance(item, dict) else str(item)
+                    for item in content
+                ])
             else:
                 content = str(content)
         else:
@@ -323,25 +418,77 @@ def intelligent_quote_summarizer(quote: str, claim_context: str) -> str:
         
         # If AI response is reasonable length, use it; otherwise use original truncated
         if 20 < len(content) < 300:
-            print(f"      🤖 Summarized: {content}")
+            print(f"       Summarized: {content}")
             return content
         else:
             # Fallback to truncation if summary fails
             return quote[:200]
     
     except Exception as e:
-        print(f"      ⚠️ Summarization failed: {e}, using truncation fallback")
+        print(f"       Summarization failed: {e}, using truncation fallback")
         return quote[:200]
 
+def build_prosecutor_query(claim_text: str) -> str:
+    """Hardcoded prosecutor query builder - no LLM hallucination risk."""
+    # Prosecutor tries to DISPROVE the claim
+    keywords = "debunked OR false OR myth OR fake OR misleading OR contradiction OR disproven"
+    specifics = "supporting facts OR evidence OR proof OR citation"
+    query = f'"{claim_text}" AND ({keywords}) AND ({specifics})'
+    return query
+
+def build_defender_query(claim_text: str) -> str:
+    """Hardcoded defender query builder - no LLM hallucination risk."""
+    # Defender tries to SUPPORT the claim
+    keywords = "proven OR confirmed OR verified OR true OR evidence OR citation OR proof"
+    specifics = "supporting facts OR evidence OR specific details"
+    query = f'"{claim_text}" AND ({keywords}) AND ({specifics})'
+    return query
+
+def extract_domain(url: str) -> str:
+    """Extract domain from URL for trust scoring."""
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        # Remove www. prefix
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        return domain
+    except:
+        return url
+
+def is_trusted_domain(url: str, trusted_domains: List[str]) -> bool:
+    """Check if URL is from a trusted domain."""
+    domain = extract_domain(url)
+    
+    # Check exact matches
+    if domain in trusted_domains:
+        return True
+    
+    # Check if any trusted domain is a substring (e.g., nih.gov matches pubmed.ncbi.nlm.nih.gov)
+    for trusted in trusted_domains:
+        if trusted in domain or domain in trusted:
+            return True
+    
+    # Check for government/educational domains
+    if domain.endswith('.gov') or domain.endswith('.edu') or domain.endswith('.gov.in') or domain.endswith('.nic.in'):
+        return True
+    
+    # Check for major academic/scientific publishers
+    academic_indicators = ['journal', 'academic', 'science', 'research', 'university', 'institute']
+    if any(indicator in domain for indicator in academic_indicators):
+        return True
+    
+    return False
+
 # ==============================================================================
-# 3. SCHEMAS - FIXED WITH base_query
+# 3. SCHEMAS - RESTRUCTURED FOR NEW OUTPUT FORMAT
 # ==============================================================================
 
 class ClaimUnit(BaseModel):
     id: int
-    claim_text: str = Field(description="The specific claim statement (merged if similar)")
-    topic_category: str = Field(description="Topic category for this specific claim")
-    trusted_domains: List[str] = Field(description="Trusted domains specific to this claim's topic")
+    claim_text: str = Field(description="The specific claim statement")
+    topic_category: str = Field(description="Topic category for this claim")
+    base_query: str = Field(description="5-7 keywords for web search")
     prosecutor_query: str = Field(default="", description="Search query to find evidence DISPROVING this claim")
     defender_query: str = Field(default="", description="Search query to find evidence SUPPORTING this claim")
 
@@ -349,31 +496,6 @@ class DecomposedClaims(BaseModel):
     implication: str = Field(description="The core narrative or hidden conclusion of the text")
     claims: List[ClaimUnit] = Field(description="List of atomic, de-duplicated claims (Max 5)", max_items=5)
 
-class RawEvidence(BaseModel):
-    """Raw search result before AI filtering"""
-    claim_id: int
-    side: Literal["Prosecutor", "Defender"]
-    source_url: str
-    title: str
-    snippet: str
-
-class FilteredEvidence(BaseModel):
-    """Evidence after AI filtering - only relevant to implication"""
-    claim_id: int
-    side: Literal["Prosecutor", "Defender"]
-    source_url: str
-    quote: str = Field(description="Most relevant quote from the source")
-    trust_score: Literal["High", "Low"]
-    relevance_score: int = Field(description="0-10 how relevant to core implication", ge=0, le=10)
-    has_specifics: bool = Field(description="Does it contain quotes, facts, figures, or citations?")
-
-class VerificationResult(BaseModel):
-    claim_text: str
-    method_used: Literal["FactCheckAPI", "PrimarySource", "ConsensusVote"]
-    status: Literal["Verified", "Debunked", "Unclear"]
-    details: str
-
-# FIXED: Changed to base_query instead of prosecutor_query/defender_query
 class QueryPair(BaseModel):
     claim_id: int
     base_query: str = Field(description="Core keywords extracted from claim")
@@ -381,91 +503,130 @@ class QueryPair(BaseModel):
 class OptimizedQueries(BaseModel):
     queries: List[QueryPair]
 
+class EvidencePoint(BaseModel):
+    """Single piece of evidence with checkable facts"""
+    source_url: str
+    key_fact: str = Field(description="Specific fact with numbers/dates/names/citations - NO vague statements")
+    trust_score: Literal["High", "Low"]
+
+class ClaimAnalysis(BaseModel):
+    """Analysis for a single claim"""
+    claim_id: int
+    claim_text: str
+    status: Literal["Verified", "Debunked", "Unclear"]
+    detailed_paragraph: str = Field(description="Crystal clear explanation (150-250 words) considering both sides")
+    prosecutor_evidence: List[EvidencePoint] = Field(max_items=2, description="Top 2 contradicting facts with specifics")
+    defender_evidence: List[EvidencePoint] = Field(max_items=2, description="Top 2 supporting facts with specifics")
+
 class FinalVerdict(BaseModel):
-    verdict: Literal["True", "False", "Debatable", "Unverified"]
-    summary: str
-    top_prosecutor_evidence: List[FilteredEvidence] = Field(description="Top 3 prosecutor evidences")
-    top_defender_evidence: List[FilteredEvidence] = Field(description="Top 3 defender evidences")
-    verifications: List[VerificationResult]
+    overall_verdict: Literal["True", "False", "Partially True", "Unverified"]
+    implication_connection: str = Field(description="Long detailed paragraph (200-300 words) connecting implication to claims")
+    claim_analyses: List[ClaimAnalysis]
 
 class CourtroomState(TypedDict):
     transcript: str
     decomposed_data: Optional[DecomposedClaims]
-    raw_evidence: List[RawEvidence]
-    filtered_evidence: List[FilteredEvidence]
     final_verdict: Optional[FinalVerdict]
 
 # ==============================================================================
-# 4. NODES
+# 4. NODES - OPTIMIZED STRUCTURE
 # ==============================================================================
 
-# ==========================================
-# PHASE 1: DECOMPOSER - WITH PER-CLAIM CATEGORIZATION
-# ==========================================
-
 def claim_decomposer_node(state: CourtroomState):
-    print("\n🧠 SMART DECOMPOSER: Analyzing Transcript & Context...")
+    """PHASE 1: Decompose transcript into claims + generate search queries (1 API CALL)"""
+    print("\nSMART DECOMPOSER: Analyzing Transcript & Generating Queries...")
+    print("TARGET: 1 API call for decomposition + query generation")
     transcript = state['transcript']
     
     try:
         prompt = f"""
-        Analyze the following transcript. 
+        Analyze the following transcript and extract verifiable claims with search queries.
+        
         TRANSCRIPT: "{transcript}"
 
         YOUR TASKS:
-        1. IMPLICATION:
-           -Extract the "Core Implication" (The main narrative or conclusion being claimed).
-        2. CLAIM EXTRACTION RULES:
-
-1. ATOMIC FOUNDATION (max 30 words each):
-   - ONE testable fact per claim
-   - If claim contains "AND" between independent facts → SPLIT (but remember -split only when facts are independent)
-   - If claim contains supporting context (WHY/HOW/WHERE) → KEEP TOGETHER
-   
-2. SPLIT CRITERIA (always split these):
-   - Two different topics (law + mythology) → split but preserve context
-   - Two contradictory statements (X is true AND X is false) → split
-   - Example WRONG: "Supreme Court said ritual is celebratory"
-   - Example RIGHT:
-     * Claim A: "Ritual mentioned in ancient scriptures"
-     * Claim B: "Supreme Court classified the ritual as celebratory activity" (mention about the ritual, meaning keep the essence alive)
-   
-3. MERGE ONLY IF (max 1 merge per claim):
-   - Same topic AND single testable fact
-   - Example: "Akash Deepav mentioned in Karthik Mahatma AND Vedic texts" 
-     = One fact (same scripture source type) → KEEP MERGED
-   
-4. PRESERVE KEYWORDS: Names, dates, Sanskrit terms, numbers stay intact
-          
+        1. IMPLICATION EXTRACTION:
+           - Extract the "Core Implication" (the main narrative or conclusion being claimed)
+        
+        2. CLAIM EXTRACTION RULES (Max 5 claims):
+           - ATOMIC: ONE testable fact per claim (max 30 words each)
+           - SPLIT if two independent facts joined by AND
+           - KEEP TOGETHER if claim contains supporting context (WHY/HOW/WHERE)
+           - PRESERVE keywords: names, dates, Sanskrit terms, numbers
            
+           Split Examples:
+            "Supreme Court said ritual is celebratory AND ancient"
+            Split into:
+              - "Ritual mentioned in ancient scriptures"
+              - "Supreme Court classified ritual as celebratory activity"
         
         3. PER-CLAIM CONTEXT ANALYSIS:
            For EACH claim, determine:
-           - topic_category: The specific category for THIS claim from:
-             ["Science/Technology", "Law/Policy", "Politics/Geopolitics", "Mythology/Religion",
-              "History/Culture", "Health/Medicine", "Environment/Climate", "Economy/Business",
-              "Education/Academia", "Social Issues", "Ethics/Philosophy", "Media/Entertainment",
-              "News/Viral", "General"]
            
-           - trusted_domains: 3-5 authoritative domains for THIS specific claim's topic.
-             Examples by category:
-             * Science/Technology: nature.com, science.org, arxiv.org, ieee.org, nasa.gov
-             * Law/Policy (India): indiankanoon.org, supremecourtofindia.nic.in, livelaw.in, barandbench.com
-             * Law/Policy (Global): justia.com, law.cornell.edu, oecd.org
-             * Politics/Geopolitics: mea.gov.in, un.org, cfr.org, brookings.edu
-             * Mythology/Religion: sacred-texts.com, britannica.com, jstor.org, vedicheritage.gov.in
-             * History/Culture: britannica.com, jstor.org, asi.nic.in, nationalarchives.gov.in
-             * Health/Medicine: who.int, cdc.gov, nih.gov, pubmed.ncbi.nlm.nih.gov, mayoclinic.org
-             * Environment/Climate: ipcc.ch, noaa.gov, epa.gov, climate.nasa.gov
-             * News/Viral: reuters.com, apnews.com, bbc.com, thehindu.com, altnews.in, snopes.com
-             * General fallback: britannica.com, wikipedia.org (with citation check)
-             
-             Government sites (.gov.in, .nic.in) are always trusted for their domain.
+           a) topic_category - Choose from:
+              ["Science/Technology", "Law/Policy", "Politics/Geopolitics", "Mythology/Religion",
+               "History/Culture", "Health/Medicine", "Environment/Climate", "Economy/Business",
+               "Education/Academia", "Social Issues", "Ethics/Philosophy", "Media/Entertainment",
+               "News/Viral", "General"]
+           
+           b) trusted_domains - 3-5 authoritative sources for THIS specific topic:
+              * Science/Technology: nature.com, science.org, arxiv.org, ieee.org, nasa.gov
+              * Law/Policy (India): indiankanoon.org, supremecourtofindia.nic.in, livelaw.in, barandbench.com
+              * Law/Policy (Global): justia.com, law.cornell.edu, oecd.org, un.org
+              * Politics/Geopolitics: mea.gov.in, un.org, cfr.org, brookings.edu, bbc.com
+              * Mythology/Religion: sacred-texts.com, britannica.com, jstor.org, vedicheritage.gov.in
+              * History/Culture: britannica.com, jstor.org, asi.nic.in, nationalarchives.gov.in
+              * Health/Medicine: who.int, cdc.gov, nih.gov, pubmed.ncbi.nlm.nih.gov, mayoclinic.org
+              * Environment/Climate: ipcc.ch, noaa.gov, epa.gov, climate.nasa.gov
+              * News/Viral: reuters.com, apnews.com, bbc.com, thehindu.com, altnews.in, snopes.com
+              * General: britannica.com, wikipedia.org (with citation check)
+              
+              Government sites (.gov.in, .nic.in, .gov, .edu) are trusted for their domain.
 
-        CONSTRAINTS:
-        - Max 5 Claims total
-        - Each claim MUST have its own topic_category and trusted_domains
-        - DO NOT generate prosecutor_query or defender_query - these will be built programmatically
+        OUTPUT FORMAT:
+        Return a JSON OBJECT with this structure:
+        
+        {{
+          "implication": "The core narrative or conclusion",
+          "claims": [
+            {{
+              "id": 1,
+              "claim_text": "Atomic claim statement",
+              "topic_category": "Category name",
+              "trusted_domains": ["domain1.com", "domain2.com", "domain3.com"],
+              "prosecutor_query": "",
+              "defender_query": ""
+            }}
+          ]
+        }}
+        
+        IMPORTANT:
+        - Leave prosecutor_query and defender_query as empty strings
+        - Focus on extracting claims and assigning proper categories/domains
+        - Max 5 claims total
+        
+        EXAMPLE OUTPUT:
+        {{
+          "implication": "Vaccines cause autism in children",
+          "claims": [
+            {{
+              "id": 1,
+              "claim_text": "MMR vaccine is linked to autism in children",
+              "topic_category": "Health/Medicine",
+              "trusted_domains": ["who.int", "cdc.gov", "nih.gov", "pubmed.ncbi.nlm.nih.gov"],
+              "prosecutor_query": "",
+              "defender_query": ""
+            }},
+            {{
+              "id": 2,
+              "claim_text": "Andrew Wakefield's 1998 study proved vaccine-autism connection",
+              "topic_category": "Health/Medicine",
+              "trusted_domains": ["thelancet.com", "bmj.com", "pubmed.ncbi.nlm.nih.gov"],
+              "prosecutor_query": "",
+              "defender_query": ""
+            }}
+          ]
+        }}
         """
         
         data = safe_invoke_json(llm_analysis, prompt, DecomposedClaims)
@@ -475,35 +636,44 @@ def claim_decomposer_node(state: CourtroomState):
 
         decomposed_data = DecomposedClaims(**data)
         
-        # Generate optimized queries for ALL claims in ONE API call
-        print("\n   🔍 GENERATING OPTIMIZED QUERIES (One API Call)...")
-        queries_dict = generate_optimized_queries(decomposed_data.claims)
+        print(f"    Implication: {decomposed_data.implication}")
+        print(f"    Claims Extracted: {len(decomposed_data.claims)}")
         
-        # Populate queries from generated dict
+        # Generate search queries in Python (deterministic, no API call)
+        print("\nGENERATING SEARCH QUERIES (Python - No API Call)...")
         for claim in decomposed_data.claims:
-            if claim.id in queries_dict:
-                claim.prosecutor_query = queries_dict[claim.id]["prosecutor"]
-                claim.defender_query = queries_dict[claim.id]["defender"]
-            else:
-                # Fallback if generation failed for this claim
-                print(f"      ⚠️ Query generation failed for claim {claim.id}, using fallback")
-                claim.prosecutor_query = f"{claim.claim_text} debunked false"
-                claim.defender_query = f"{claim.claim_text} verified confirmed"
-        
-        print(f"   🎯 Implication: {decomposed_data.implication}")
-        print(f"   🔢 Claims Extracted: {len(decomposed_data.claims)}")
-        
-        for c in decomposed_data.claims:
-            print(f"\n      [{c.id}] {c.claim_text}")
-            print(f"          📂 Category: {c.topic_category}")
-            print(f"          🏰 Trusted: {c.trusted_domains}")
-            print(f"          🔴 Pros Query: {c.prosecutor_query}")
-            print(f"          🟢 Def Query: {c.defender_query}")
+            # Extract key terms from claim (simple keyword extraction)
+            claim_words = claim.claim_text.split()
+            
+            # Remove common stop words and keep important terms
+            stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'not'}
+            keywords = [w for w in claim_words if w.lower() not in stop_words][:7]
+            base_query = ' '.join(keywords)
+            
+            # Remove negations that might flip the search
+            base_query = base_query.replace(' not ', ' ').replace(' NOT ', ' ').strip()
+            
+            # Build prosecutor query (find contradicting evidence)
+            claim.prosecutor_query = f"{base_query} false debunked myth contradicts evidence court ruling disproved statistics"
+            
+            # Build defender query (find supporting evidence)
+            claim.defender_query = f"{base_query} confirmed verified proven true evidence court ruling expert testimony study data"
+            
+            print(f"\n      [{claim.id}] {claim.claim_text}")
+            print(f"           Category: {claim.topic_category}")
+            print(f"           Trusted: {', '.join(claim.trusted_domains[:3])}")
+            print(f"           Prosecutor: {claim.prosecutor_query}")
+            print(f"           Defender: {claim.defender_query}")
 
+        print(f"\n    DECOMPOSER COMPLETE - Total API Calls: 1")
         return {"decomposed_data": decomposed_data}
 
     except Exception as e:
-        print(f"   ❌ Error in Decomposer: {e}")
+        print(f"    Error in Decomposer: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Fallback: create basic claim structure
         fallback = DecomposedClaims(
             implication="General Verification",
             claims=[ClaimUnit(
@@ -517,538 +687,468 @@ def claim_decomposer_node(state: CourtroomState):
         )
         return {"decomposed_data": fallback}
 
-# ==========================================
-# PHASE 2: INVESTIGATOR (COMPLETELY FIXED)
-# ==========================================
-
-def investigator_node(state: CourtroomState):
-    print("\n🔍 INVESTIGATOR: Intelligent Evidence Collection...")
+def investigator_and_judge_node(state: CourtroomState):
+    """
+    PHASE 2: Search, Extract Evidence, Analyze Claims, Connect to Implication
+    TARGET: ≤5 API calls per claim + 1 final API call
+    """
+    print("\nINVESTIGATOR + JUDGE: Evidence Collection & Analysis...")
+    print(f"    TARGET: Max 5 API calls per claim + 1 final call")
     
     decomposed = state.get('decomposed_data')
     if not decomposed:
-        print("   ⚠️ No claims to investigate. Skipping.")
-        return {"raw_evidence": [], "filtered_evidence": []}
+        print("No claims to investigate. Skipping.")
+        return {"final_verdict": None}
 
-    raw_evidence_list = []
+    all_claim_analyses = []
+    total_claim_api_calls = 0
 
     # ==========================================
-    # STEP 1: Python - Fire Searches (Top 2 per side)
+    # Process Each Claim
     # ==========================================
     
     for claim in decomposed.claims:
-        print(f"\n   🔎 Processing Claim #{claim.id}: '{claim.claim_text}'")
-        print(f"      📂 Category: {claim.topic_category}")
-        print(f"      🏰 Trusted Domains: {claim.trusted_domains}")
-        
-        # Prosecutor Search (Top 2)
-        print(f"      🔴 Prosecutor Search: {claim.prosecutor_query}")
-        try:
-            raw_pros = search_web(claim.prosecutor_query, intent="prosecutor")
-            
-            if raw_pros and isinstance(raw_pros, list):
-                print(f"         ✅ Got {len(raw_pros)} results")
-                for i, result in enumerate(raw_pros[:2], 1):  # TOP 2 ONLY
-                    url = result.get('url', 'unknown')
-                    title = result.get('title', 'Untitled')
-                    snippet = result.get('snippet', '')
-                    
-                    print(f"         {i}. {title}")
-                    
-                    raw_evidence_list.append(RawEvidence(
-                        claim_id=claim.id,
-                        side="Prosecutor",
-                        source_url=url,
-                        title=title,
-                        snippet=snippet[:1000]
-                    ))
-            else:
-                print(f"         ❌ No results or invalid format")
-                
-        except Exception as e:
-            print(f"      ⚠️ Prosecutor Search Failed: {e}")
-            import traceback
-            traceback.print_exc()
-
-        # Defender Search (Top 2)
-        print(f"      🟢 Defender Search: {claim.defender_query}")
-        try:
-            raw_def = search_web(claim.defender_query, intent="defender")
-            
-            if raw_def and isinstance(raw_def, list):
-                print(f"         ✅ Got {len(raw_def)} results")
-                for i, result in enumerate(raw_def[:2], 1):  # TOP 2 ONLY
-                    url = result.get('url', 'unknown')
-                    title = result.get('title', 'Untitled')
-                    snippet = result.get('snippet', '')
-                    
-                    print(f"         {i}. {title}")
-                    
-                    raw_evidence_list.append(RawEvidence(
-                        claim_id=claim.id,
-                        side="Defender",
-                        source_url=url,
-                        title=title,
-                        snippet=snippet[:1000]
-                    ))
-            else:
-                print(f"         ❌ No results or invalid format")
-                
-        except Exception as e:
-            print(f"      ⚠️ Defender Search Failed: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    print(f"\n   📦 Raw Evidence Collected: {len(raw_evidence_list)} sources")
-    
-    if len(raw_evidence_list) == 0:
-        print("\n   ⚠️ CRITICAL: No evidence collected. Check your search_web() function!")
-        print("      This could mean:")
-        print("      1. search_web() is returning None or empty list")
-        print("      2. Response format doesn't match expected keys (url, title, snippet)")
-        print("      3. API key is invalid or quota exhausted")
-        return {
-            "raw_evidence": raw_evidence_list,
-            "filtered_evidence": []
-        }
-    
-    # ==========================================
-    # STEP 2: AI - Filter Based on Implication (ROBUST VERSION)
-    # ==========================================
-    
-    print("\n   🧠 AI FILTERING: Analyzing relevance to core implication...")
-    
-    filtered_evidence_list = []
-    
-    # Group evidence by claim for efficient processing
-    for claim in decomposed.claims:
-        claim_evidence = [e for e in raw_evidence_list if e.claim_id == claim.id]
-        
-        if not claim_evidence:
-            print(f"      ⚠️ No raw evidence for Claim {claim.id}, skipping")
-            continue
-        
-        # Construct evidence text for AI
-        evidence_text = ""
-        for i, ev in enumerate(claim_evidence):
-            evidence_text += f"\n[Evidence {i+1}] ({ev.side})\n"
-            evidence_text += f"URL: {ev.source_url}\n"
-            evidence_text += f"Title: {ev.title}\n"
-            evidence_text += f"Content: {ev.snippet}\n"
-            evidence_text += "-" * 50 + "\n"
-        
-        prompt = f"""
-You are an Intelligent Investigator analyzing evidence.
-
-CORE IMPLICATION: "{decomposed.implication}"
-SPECIFIC CLAIM: "{claim.claim_text}"
-CLAIM CATEGORY: "{claim.topic_category}"
-TRUSTED DOMAINS: {claim.trusted_domains}
-
-RAW EVIDENCE:
-{evidence_text}
-
-YOUR TASK:
-For EACH piece of evidence above, determine:
-1. Is it relevant to the CORE IMPLICATION (not just the claim)?
-2. Does it contain SPECIFICS (exact quotes, citations, facts, figures, dates, case numbers, study references)?
-3. Extract the MOST RELEVANT quote (prioritize quotes with specifics).
-4. Assign relevance_score (0-10) where 10 = highly relevant with specifics.
-5. Determine trust_score:
-   - "High" if domain matches trusted_domains list OR is a .gov/.edu/.org from reputable institution
-   - "Low" otherwise
-
-CRITICAL: You MUST return a valid JSON array, even if empty.
-If NO evidence is relevant, return: []
-
-EXAMPLE OUTPUT:
-[
-  {{
-    "claim_id": {claim.id},
-    "side": "Prosecutor",
-    "source_url": "https://example.com",
-    "quote": "Specific quote here",
-    "trust_score": "High",
-    "relevance_score": 8,
-    "has_specifics": true
-  }}
-]
-
-Return ONLY the JSON array, no explanation or preamble.
-"""
-        
-        try:
-            print(f"      🔍 Filtering evidence for Claim {claim.id}...")
-            
-            response = llm_analysis.invoke(prompt)
-            
-            # Extract content
-            content = response.content if hasattr(response, 'content') else str(response)
-            if isinstance(content, list):
-                content = ' '.join([str(b) for b in content])
-            
-            # ✅ USE CENTRALIZED JSON CLEANER
-            cleaned_content = clean_llm_json(content)
-            
-            # If no JSON found, default to empty array
-            if not cleaned_content or cleaned_content == "[]":
-                print(f"      ⚠️ No JSON array found in response for Claim {claim.id}")
-                parsed_array = []
-            else:
-                # Parse JSON with error handling
-                try:
-                    parsed_array = json.loads(cleaned_content)
-                except json.JSONDecodeError as je:
-                    print(f"      ❌ JSON parsing failed for Claim {claim.id}: {je}")
-                    print(f"      📄 Raw content (first 200 chars): {content[:200]}")
-                    print(f"      🧹 Cleaned content (first 200 chars): {cleaned_content[:200]}")
-                    print(f"      ⚠️ Using empty array as fallback")
-                    parsed_array = []
-            
-            for item_data in parsed_array:
-                try:
-                    # Ensure all required fields exist with defaults
-                    item_data.setdefault('claim_id', claim.id)
-                    item_data.setdefault('side', 'Prosecutor')
-                    item_data.setdefault('source_url', 'unknown')
-                    item_data.setdefault('quote', '')
-                    item_data.setdefault('trust_score', 'Low')
-                    item_data.setdefault('relevance_score', 0)
-                    item_data.setdefault('has_specifics', False)
-                    
-                    filtered_ev = FilteredEvidence(**item_data)
-                    
-                    # Double-check trust score against claim-specific trusted domains
-                    if any(domain in filtered_ev.source_url for domain in claim.trusted_domains):
-                        filtered_ev.trust_score = "High"
-                    
-                    filtered_evidence_list.append(filtered_ev)
-                    
-                    print(f"      ✅ Filtered: {filtered_ev.side} | Relevance: {filtered_ev.relevance_score}/10 | Specifics: {filtered_ev.has_specifics} | Trust: {filtered_ev.trust_score}")
-                    
-                except Exception as e:
-                    print(f"      ⚠️ Failed to validate evidence item: {e}")
-                    print(f"         Item data: {item_data}")
-            
-            if not parsed_array:
-                print(f"      ℹ️ No relevant evidence found for Claim {claim.id} (empty array returned)")
-            
-        except Exception as e:
-            print(f"      ❌ AI Filtering Failed for Claim {claim.id}: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    print(f"\n   ✨ Filtered Evidence: {len(filtered_evidence_list)} high-quality sources")
-    
-    return {
-        "raw_evidence": raw_evidence_list,
-        "filtered_evidence": filtered_evidence_list
-    }
-
-# ==========================================
-# PHASE 3: THE JUDGE - TOP 3 PER SIDE + 3-TIER VERIFICATION
-# ==========================================
-
-def judge_node(state: CourtroomState):
-    print("\n⚖️ JUDGE: Supreme Verdict Process...")
-    
-    try:
-        decomposed = state.get('decomposed_data')
-        filtered_evidence = state.get('filtered_evidence', [])
-        
-        if not decomposed:
-            raise ValueError("Missing decomposed data")
-
-        if not filtered_evidence:
-            print("   ⚠️ WARNING: No filtered evidence available.")
-            return {"final_verdict": FinalVerdict(
-                verdict="Unverified",
-                summary="Unable to verify: No evidence passed filtering.",
-                top_prosecutor_evidence=[],
-                top_defender_evidence=[],
-                verifications=[]
-            )}
-
-        # ==========================================
-        # STEP 1: Select Top 3 PER SIDE (Prosecutor & Defender)
-        # ==========================================
-        
-        print("\n   🏆 STEP 1: Selecting Top 3 Evidence Per Side...")
-        
-        # Separate evidence by side
-        prosecutor_evidence = [e for e in filtered_evidence if e.side == "Prosecutor"]
-        defender_evidence = [e for e in filtered_evidence if e.side == "Defender"]
-        
-        print(f"      📊 Prosecutor pool: {len(prosecutor_evidence)} pieces")
-        print(f"      📊 Defender pool: {len(defender_evidence)} pieces")
-        
-        # Prepare FULL evidence summaries for AI (all evidence, not pre-filtered)
-        pros_summary = ""
-        for i, ev in enumerate(prosecutor_evidence):
-            pros_summary += f"\n[{i+1}] Claim #{ev.claim_id} | Trust: {ev.trust_score} | Relevance: {ev.relevance_score}/10 | Specifics: {ev.has_specifics}\n"
-            pros_summary += f"Quote: {ev.quote[:300]}...\n"
-            pros_summary += f"URL: {ev.source_url}\n"
-            pros_summary += "-" * 50 + "\n"
-        
-        def_summary = ""
-        for i, ev in enumerate(defender_evidence):
-            def_summary += f"\n[{i+1}] Claim #{ev.claim_id} | Trust: {ev.trust_score} | Relevance: {ev.relevance_score}/10 | Specifics: {ev.has_specifics}\n"
-            def_summary += f"Quote: {ev.quote[:300]}...\n"
-            def_summary += f"URL: {ev.source_url}\n"
-            def_summary += "-" * 50 + "\n"
-        
-        # Select Top 3 Prosecutor Evidence - HOLISTIC ANALYSIS
-        pros_selection_prompt = f"""
-        You are the Supreme Judge reviewing ALL PROSECUTOR evidence (pieces that attack/debunk the implication).
-        
-        CORE IMPLICATION TO DEBUNK: "{decomposed.implication}"
-        
-        ALL PROSECUTOR EVIDENCE (anti-claim):
-        {pros_summary}
-        
-        YOUR TASK: Analyze ALL pieces holistically and select EXACTLY 3 that are:
-        1. MOST POWERFUL in debunking/contradicting the implication
-        2. Have HIGHEST specifics (direct quotes, facts, figures, citations, case numbers, dates)
-        3. Come from TRUSTED sources (High trust score preferred)
-        4. Are UNIQUE and NON-CONFLICTING (don't pick 2 pieces saying the same thing - pick the strongest ONE)
-        5. Together tell a complete story against the implication
-        
-        CRITICAL: Look for pieces that:
-        - Cover DIFFERENT aspects of the implication (not just repetition)
-        - Have direct contradictory evidence (opposite facts, different outcomes, etc.)
-        - Contain verifiable specifics (names, dates, numbers, citations to studies/laws)
-        - From different sources when possible (not all from one source)
-        
-        Return a JSON array with EXACTLY 3 evidence indices covering the most damaging, non-redundant evidence.
-        Example: [1, 5, 8] means pieces 1, 5, and 8 are your top 3.
-        If fewer than 3 pieces exist, return what's available.
-        """
-        
-        try:
-            response = llm_analysis.invoke(pros_selection_prompt)
-            content = response.content if hasattr(response, 'content') else str(response)
-            if isinstance(content, list):
-                content = ' '.join([str(b) for b in content])
-            
-            content = re.sub(r'```json\s*', '', content).replace('```', '').strip()
-            if "[" in content and "]" in content:
-                content = content[content.find("["):content.rfind("]")+1]
-            
-            selected_indices = json.loads(content)
-            top_prosecutor = []
-            for idx in selected_indices[:3]:
-                if isinstance(idx, int) and 1 <= idx <= len(prosecutor_evidence):
-                    top_prosecutor.append(prosecutor_evidence[idx - 1])
-            
-            print(f"      ✅ Selected {len(top_prosecutor)} prosecutor evidences")
-            
-        except Exception as e:
-            print(f"      ⚠️ Prosecutor selection failed, using top by score: {e}")
-            sorted_pros = sorted(prosecutor_evidence, key=lambda x: (x.has_specifics, x.relevance_score, x.trust_score=="High"), reverse=True)
-            top_prosecutor = sorted_pros[:3]
-        
-        # Select Top 3 Defender Evidence - HOLISTIC ANALYSIS
-        def_selection_prompt = f"""
-        You are the Supreme Judge reviewing ALL DEFENDER evidence (pieces that support/verify the implication).
-        
-        CORE IMPLICATION TO SUPPORT: "{decomposed.implication}"
-        
-        ALL DEFENDER EVIDENCE (pro-claim):
-        {def_summary}
-        
-        YOUR TASK: Analyze ALL pieces holistically and select EXACTLY 3 that are:
-        1. MOST POWERFUL in supporting/verifying the implication
-        2. Have HIGHEST specifics (direct quotes, facts, figures, citations, case numbers, dates)
-        3. Come from TRUSTED sources (High trust score preferred)
-        4. Are UNIQUE and NON-CONFLICTING (don't pick 2 pieces saying the same thing - pick the strongest ONE)
-        5. Together tell a complete story supporting the implication
-        
-        CRITICAL: Look for pieces that:
-        - Cover DIFFERENT aspects of the implication (not just repetition)
-        - Have direct supporting evidence (confirming facts, similar outcomes, corroborating sources)
-        - Contain verifiable specifics (names, dates, numbers, citations to studies/laws/events)
-        - From different sources when possible (not all from one source)
-        
-        Return a JSON array with EXACTLY 3 evidence indices covering the most supportive, non-redundant evidence.
-        Example: [2, 4, 7] means pieces 2, 4, and 7 are your top 3.
-        If fewer than 3 pieces exist, return what's available.
-        """
-        
-        try:
-            response = llm_search.invoke(def_selection_prompt)
-            content = response.content if hasattr(response, 'content') else str(response)
-            if isinstance(content, list):
-                content = ' '.join([str(b) for b in content])
-            
-            content = re.sub(r'```json\s*', '', content).replace('```', '').strip()
-            if "[" in content and "]" in content:
-                content = content[content.find("["):content.rfind("]")+1]
-            
-            selected_indices = json.loads(content)
-            top_defender = []
-            for idx in selected_indices[:3]:
-                if isinstance(idx, int) and 1 <= idx <= len(defender_evidence):
-                    top_defender.append(defender_evidence[idx - 1])
-            
-            print(f"      ✅ Selected {len(top_defender)} defender evidences")
-            
-        except Exception as e:
-            print(f"      ⚠️ Defender selection failed, using top by score: {e}")
-            sorted_def = sorted(defender_evidence, key=lambda x: (x.has_specifics, x.relevance_score, x.trust_score=="High"), reverse=True)
-            top_defender = sorted_def[:3]
+        claim_start_calls = api_call_count
+        print(f"\n   {'='*70}")
+        print(f"    PROCESSING CLAIM #{claim.id}")
+        print(f"   {'='*70}")
+        print(f"   Claim: '{claim.claim_text}'")
+        print(f"   Category: {claim.topic_category}")
+        print(f"   Trusted Domains: {', '.join(claim.trusted_domains)}")
         
         # ==========================================
-        # STEP 2: 3-Tier Verification
+        # STEP 1: Fire Web Searches (No API calls)
         # ==========================================
         
-        print("\n   🔬 STEP 2: 3-Tier Verification Process...")
+        print(f"\n       STEP 1: Web Search (No API calls)")
         
-        verifications = []
+        # Prosecutor Search
+        print(f"       Prosecutor Query: {claim.prosecutor_query}")
+        try:
+            raw_pros_results = search_web(claim.prosecutor_query, intent="prosecutor")
+            prosecutor_results = raw_pros_results[:2] if raw_pros_results and isinstance(raw_pros_results, list) else []
+            print(f"          Retrieved {len(prosecutor_results)} prosecutor sources")
+        except Exception as e:
+            print(f"          Prosecutor search failed: {e}")
+            prosecutor_results = []
         
-        for claim in decomposed.claims:
-            print(f"\n   👉 Verifying Claim #{claim.id}: '{claim.claim_text}'")
+        # Defender Search
+        print(f"       Defender Query: {claim.defender_query}")
+        try:
+            raw_def_results = search_web(claim.defender_query, intent="defender")
+            defender_results = raw_def_results[:2] if raw_def_results and isinstance(raw_def_results, list) else []
+            print(f"          Retrieved {len(defender_results)} defender sources")
+        except Exception as e:
+            print(f"          Defender search failed: {e}")
+            defender_results = []
+        
+        # ==========================================
+        # STEP 2: Extract Prosecutor Evidence (1-2 API calls)
+        # ==========================================
+        
+        prosecutor_facts = []
+        
+        if prosecutor_results:
+            print(f"\n       STEP 2a: Extract Prosecutor Evidence")
             
-            # TIER 1: Fact Check API
-            print("      [Tier 1] Google Fact Check API...")
-            fc_result = check_google_fact_check_tool(claim.claim_text)
-            if "MATCH:" in fc_result:
-                print(f"      ✅ Tier 1 Passed: {fc_result}")
-                verifications.append(VerificationResult(
-                    claim_text=claim.claim_text,
-                    method_used="FactCheckAPI",
-                    status="Debunked" if any(word in fc_result.lower() for word in ["false", "misleading", "incorrect"]) else "Verified",
-                    details=fc_result
-                ))
-                continue
-            print("      ❌ Tier 1: No official fact-check found")
+            # Build evidence text from search results
+            pros_evidence_text = ""
+            for i, result in enumerate(prosecutor_results):
+                pros_evidence_text += f"\n[Source {i+1}]\n"
+                pros_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
+                pros_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
+                pros_evidence_text += f"Content: {result.get('snippet', '')[:800]}\n"
+                pros_evidence_text += "-" * 60 + "\n"
             
-            # TIER 2: Trusted Domain Check (using claim-specific trusted domains)
-            print("      [Tier 2] Trusted Domain Verification...")
-            claim_evidence = [e for e in top_prosecutor + top_defender if e.claim_id == claim.id]
-            found_trusted = False
+            extract_prompt = f"""
+            Extract the TOP 2 most powerful CONTRADICTING facts for this claim.
             
-            for ev in claim_evidence:
-                if ev.trust_score == "High":
-                    print(f"      ✅ Tier 2 Passed: Trusted source found - {ev.source_url}")
-                    
-                    # Use intelligent summarizer instead of truncation
-                    summary = intelligent_quote_summarizer(ev.quote, claim.claim_text)
-                    
-                    verifications.append(VerificationResult(
-                        claim_text=claim.claim_text,
-                        method_used="PrimarySource",
-                        status="Verified" if ev.side == "Defender" else "Debunked",
-                        details=f"Trusted source ({ev.source_url}) states: {summary}"
-                    ))
-                    found_trusted = True
-                    break
+            CLAIM TO CONTRADICT: "{claim.claim_text}"
+            CLAIM CATEGORY: {claim.topic_category}
+            TRUSTED DOMAINS: {', '.join(claim.trusted_domains)}
             
-            if found_trusted:
-                continue
+            PROSECUTOR SOURCES (contradicting the claim):
+            {pros_evidence_text}
             
-            print("      ❌ Tier 2: No trusted sources found")
+            EXTRACTION RULES:
+            1. Extract EXACTLY 2 facts (or fewer if insufficient evidence)
+            2. Each fact MUST contain SPECIFIC, CHECKABLE information:
+               - Numbers, percentages, statistics
+               - Dates, years, time periods
+               - Names of people, organizations, studies
+               - Citations to research, court cases, laws
+               - Direct quotes from authorities
             
-            # TIER 3: Consensus Vote
-            print("      [Tier 3] Consensus Analysis...")
-            consensus_data = consensus_search_tool(claim.claim_text)
+            3. NO vague statements like:
+                "Experts disagree"
+                "Studies show"
+                "According to sources"
             
-            consensus_prompt = f"""
-            Analyze search results for claim: "{claim.claim_text}"
+            4. ONLY concrete facts like:
+                "CDC study of 1.2M children found no MMR-autism link (JAMA, 2015)"
+                "Wakefield's 1998 paper retracted by The Lancet in 2010 for data fraud"
+                "Supreme Court ruling 2018/SC/1234 banned firecrackers in Delhi NCR"
             
-            Search Results: {consensus_data}
+            5. Assign trust_score:
+               - "High" if URL matches trusted domains OR is .gov/.edu/.org from reputable institution
+               - "Low" otherwise
             
-            Determine:
-            - If results say "False", "Myth", "Misleading", "Fake", "Debunked" → status = "Debunked"
-            - If results say "True", "Verified", "Confirmed", "Proven" → status = "Verified"
-            - If sources disagree or inconclusive → status = "Unclear"
+            Return JSON array:
+            [
+              {{
+                "source_url": "https://...",
+                "key_fact": "Specific fact with numbers/dates/names/citations",
+                "trust_score": "High" | "Low"
+              }}
+            ]
             
-            Return JSON with claim_text, method_used="ConsensusVote", status, and details.
+            If no good evidence, return empty array: []
             """
             
-            vote = safe_invoke_json(llm_search, consensus_prompt, VerificationResult)
-            if not vote:
-                vote = {"claim_text": claim.claim_text, "method_used": "ConsensusVote", "status": "Unclear", "details": "Consensus analysis failed"}
+            prosecutor_facts_raw = safe_invoke_json_array(llm_analysis, extract_prompt, EvidencePoint)
             
-            print(f"      🗳️ Tier 3 Result: {vote.get('status')} | {vote.get('details', '')}")
+            # Double-check trust scores against claim-specific trusted domains
+            for fact in prosecutor_facts_raw:
+                if isinstance(fact, dict):
+                    url = fact.get('source_url', '')
+                    if is_trusted_domain(url, claim.trusted_domains):
+                        fact['trust_score'] = "High"
+                    prosecutor_facts.append(fact)
             
-            verifications.append(VerificationResult(**vote))
+            print(f"          Extracted {len(prosecutor_facts)} prosecutor facts")
+            for i, fact in enumerate(prosecutor_facts, 1):
+                fact_text = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
+                fact_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
+                print(f"         {i}. [{fact_trust}] {fact_text[:100]}...")
+        else:
+            print(f"\n       STEP 2a: No prosecutor sources found, skipping extraction")
         
         # ==========================================
-        # STEP 3: Final Verdict
+        # STEP 3: Extract Defender Evidence (1-2 API calls)
         # ==========================================
         
-        print("\n   🔨 STEP 3: Writing Final Verdict...")
+        defender_facts = []
         
-        # Construct case file with prosecutor vs defender evidence
-        case_file = f"CORE IMPLICATION: {decomposed.implication}\n\n"
+        if defender_results:
+            print(f"\n       STEP 2b: Extract Defender Evidence")
+            
+            # Build evidence text from search results
+            def_evidence_text = ""
+            for i, result in enumerate(defender_results):
+                def_evidence_text += f"\n[Source {i+1}]\n"
+                def_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
+                def_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
+                def_evidence_text += f"Content: {result.get('snippet', '')[:800]}\n"
+                def_evidence_text += "-" * 60 + "\n"
+            
+            extract_prompt = f"""
+            Extract the TOP 2 most powerful SUPPORTING facts for this claim.
+            
+            CLAIM TO SUPPORT: "{claim.claim_text}"
+            CLAIM CATEGORY: {claim.topic_category}
+            TRUSTED DOMAINS: {', '.join(claim.trusted_domains)}
+            
+            DEFENDER SOURCES (supporting the claim):
+            {def_evidence_text}
+            
+            EXTRACTION RULES:
+            1. Extract EXACTLY 2 facts (or fewer if insufficient evidence)
+            2. Each fact MUST contain SPECIFIC, CHECKABLE information:
+               - Numbers, percentages, statistics
+               - Dates, years, time periods
+               - Names of people, organizations, studies
+               - Citations to research, court cases, laws, scriptures
+               - Direct quotes from authorities
+            
+            3. NO vague statements like:
+                "Ancient texts mention this"
+                "It's traditional"
+                "Many believe"
+            
+            4. ONLY concrete facts like:
+                "Skanda Purana (Chapter 5, Verse 12) describes 'akash deepa' ritual"
+                "Archaeological evidence from 1200 BCE shows firecracker-like devices (ASI Report 2010)"
+                "85% of respondents in 2019 survey practiced this tradition (Pew Research)"
+            
+            5. Assign trust_score:
+               - "High" if URL matches trusted domains OR is .gov/.edu/.org from reputable institution
+               - "Low" otherwise
+            
+            Return JSON array:
+            [
+              {{
+                "source_url": "https://...",
+                "key_fact": "Specific fact with numbers/dates/names/citations",
+                "trust_score": "High" | "Low"
+              }}
+            ]
+            
+            If no good evidence, return empty array: []
+            """
+            
+            defender_facts_raw = safe_invoke_json_array(llm_analysis, extract_prompt, EvidencePoint)
+            
+            # Double-check trust scores
+            for fact in defender_facts_raw:
+                if isinstance(fact, dict):
+                    url = fact.get('source_url', '')
+                    if is_trusted_domain(url, claim.trusted_domains):
+                        fact['trust_score'] = "High"
+                    defender_facts.append(fact)
+            
+            print(f"          Extracted {len(defender_facts)} defender facts")
+            for i, fact in enumerate(defender_facts, 1):
+                fact_text = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
+                fact_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
+                print(f"         {i}. [{fact_trust}] {fact_text[:100]}...")
+        else:
+            print(f"\n       STEP 2b: No defender sources found, skipping extraction")
         
-        case_file += "PROSECUTOR EVIDENCE (Against the claim):\n"
-        for i, ev in enumerate(top_prosecutor, 1):
-            case_file += f"\n{i}. [PROSECUTOR] Trust: {ev.trust_score} | Relevance: {ev.relevance_score}/10 | Specifics: {ev.has_specifics}\n"
-            case_file += f"   Source: {ev.source_url}\n"
-            case_file += f"   Quote: {ev.quote}\n"
+        # ==========================================
+        # STEP 4: Fact-Check with Google API (if available)
+        # ==========================================
         
-        case_file += f"\n\nDEFENDER EVIDENCE (Supporting the claim):\n"
-        for i, ev in enumerate(top_defender, 1):
-            case_file += f"\n{i}. [DEFENDER] Trust: {ev.trust_score} | Relevance: {ev.relevance_score}/10 | Specifics: {ev.has_specifics}\n"
-            case_file += f"   Source: {ev.source_url}\n"
-            case_file += f"   Quote: {ev.quote}\n"
+        print(f"\n       STEP 3: Fact-Checking")
+        fact_check_result = check_google_fact_check_tool(claim.claim_text)
+        if "MATCH:" in fact_check_result:
+            print(f"          Google Fact Check: {fact_check_result}")
+        else:
+            print(f"          Google Fact Check: {fact_check_result}")
         
-        case_file += f"\n\nVERIFICATION RESULTS:\n"
-        for v in verifications:
-            case_file += f"- {v.claim_text}: {v.status} via {v.method_used}\n"
+        # Optionally run consensus check for unclear cases
+        consensus_result = ""
+        if len(prosecutor_facts) == 0 and len(defender_facts) == 0:
+            print(f"          Running Consensus Check (no direct evidence found)...")
+            consensus_result = consensus_search_tool(claim.claim_text)
+            print(f"          Consensus check complete")
         
-        verdict_prompt = f"""
-        You are the Supreme Court Judge delivering the final verdict based on balanced evidence.
+        # ==========================================
+        # STEP 5: AI Analysis & Verdict (1 API call)
+        # ==========================================
         
-        {case_file}
+        print(f"\n       STEP 4: Writing Detailed Analysis")
+        
+        # Prepare evidence summaries
+        prosecutor_summary = json.dumps([
+            {
+                'url': (f.get('source_url') if isinstance(f, dict) else f.source_url),
+                'fact': (f.get('key_fact') if isinstance(f, dict) else f.key_fact),
+                'trust': (f.get('trust_score') if isinstance(f, dict) else f.trust_score)
+            }
+            for f in prosecutor_facts
+        ], indent=2)
+        
+        defender_summary = json.dumps([
+            {
+                'url': (f.get('source_url') if isinstance(f, dict) else f.source_url),
+                'fact': (f.get('key_fact') if isinstance(f, dict) else f.key_fact),
+                'trust': (f.get('trust_score') if isinstance(f, dict) else f.trust_score)
+            }
+            for f in defender_facts
+        ], indent=2)
+        
+        analysis_prompt = f"""
+        You are a Supreme Court Judge analyzing evidence for a fact-checking verdict.
+        
+        CLAIM UNDER REVIEW:
+        "{claim.claim_text}"
+        
+        CLAIM CATEGORY: {claim.topic_category}
+        TRUSTED SOURCES: {', '.join(claim.trusted_domains)}
+        
+        PROSECUTOR EVIDENCE (Contradicting the claim):
+        {prosecutor_summary}
+        
+        DEFENDER EVIDENCE (Supporting the claim):
+        {defender_summary}
+        
+        FACT-CHECK RESULT:
+        {fact_check_result}
+        
+        {"CONSENSUS ANALYSIS:" + consensus_result if consensus_result else ""}
         
         YOUR TASK:
-        1. Review the prosecutor evidence (3 pieces against the claim)
-        2. Review the defender evidence (3 pieces supporting the claim)
-        3. Balance both sides fairly
-        4. Consider all verification results
-        5. Determine if the CORE IMPLICATION is True/False/Debatable/Unverified
-        6. Write a professional summary with citations to specific evidence
+        1. Determine the claim status: "Verified", "Debunked", or "Unclear"
         
-        VERDICT RULES:
-        - "False" if prosecutor evidence is stronger and more credible
-        - "True" if defender evidence is stronger and more credible
-        - "Debatable" if both sides have equally strong, credible evidence
-        - "Unverified" if insufficient evidence on either side
+        2. Write a DETAILED PARAGRAPH (150-250 words) that:
+           - States your verdict clearly in the opening sentence
+           - Explains the reasoning behind your verdict
+           - References SPECIFIC evidence from both prosecutor and defender sides
+           - Compares the quality and credibility of sources
+           - Addresses why one side is stronger (or if balanced, why it's unclear)
+           - Mentions trust scores and source credibility
+           - Includes specific facts, numbers, dates, citations from the evidence
+           - Makes the reasoning crystal clear so readers don't need to read individual evidence
         
-        PRIORITIZATION:
-        - Evidence with specific quotes, facts, figures gets highest weight
-        - Evidence from trusted sources gets higher weight
-        - Consider the source quality and relevance score
+        VERDICT GUIDELINES:
+        - "Verified" if defender evidence is stronger, from trusted sources, with specifics
+        - "Debunked" if prosecutor evidence is stronger, from trusted sources, with specifics
+        - "Unclear" if:
+          * Both sides have equally strong evidence
+          * Evidence is insufficient or low-quality on both sides
+          * Sources contradict each other with similar credibility
+        
+        WRITING STYLE:
+        - Professional, balanced, objective
+        - Reference specific evidence: "According to [Source], [specific fact]..."
+        - Compare evidence: "While defenders cite [X], prosecutors counter with [Y]..."
+        - Explain source credibility: "The CDC (high-trust source) contradicts..."
+        
+        OUTPUT FORMAT:
+        Return JSON object:
+        {{
+          "claim_id": {claim.id},
+          "claim_text": "{claim.claim_text}",
+          "status": "Verified" | "Debunked" | "Unclear",
+          "detailed_paragraph": "Your 150-250 word analysis here...",
+          "prosecutor_evidence": {prosecutor_summary},
+          "defender_evidence": {defender_summary}
+        }}
+        
+        EXAMPLE PARAGRAPH:
+        "The claim that the MMR vaccine causes autism is DEBUNKED based on overwhelming scientific evidence. The CDC's comprehensive study of 1.2 million children (JAMA, 2015) found absolutely no causal link between MMR vaccination and autism spectrum disorder. This high-trust source is corroborated by systematic reviews from the WHO and multiple peer-reviewed meta-analyses. While defenders cite Andrew Wakefield's 1998 study, this research was formally retracted by The Lancet in 2010 after investigations revealed data fraud and ethical violations. Wakefield subsequently lost his medical license. The prosecutor evidence is not only more recent but comes from the world's leading health organizations, whereas the defender's primary source has been thoroughly discredited. The scientific consensus, based on decades of research involving millions of participants, definitively contradicts this claim."
         """
         
-        verdict_data = safe_invoke_json(llm_analysis, verdict_prompt, FinalVerdict)
+        analysis_data = safe_invoke_json(llm_analysis, analysis_prompt, ClaimAnalysis)
         
-        if not verdict_data:
-            return {"final_verdict": FinalVerdict(
-                verdict="Unverified",
-                summary="Judge failed to generate verdict due to API error.",
-                top_prosecutor_evidence=top_prosecutor,
-                top_defender_evidence=top_defender,
-                verifications=verifications
-            )}
+        if analysis_data:
+            # Ensure evidence lists are properly included
+            if not analysis_data.get('prosecutor_evidence'):
+                analysis_data['prosecutor_evidence'] = prosecutor_facts
+            if not analysis_data.get('defender_evidence'):
+                analysis_data['defender_evidence'] = defender_facts
+            
+            analysis = ClaimAnalysis(**analysis_data)
+            all_claim_analyses.append(analysis)
+            
+            claim_end_calls = api_call_count
+            claim_api_calls = claim_end_calls - claim_start_calls
+            total_claim_api_calls += claim_api_calls
+            
+            print(f"          Analysis Complete")
+            print(f"          Verdict: {analysis.status}")
+            print(f"          API Calls for this claim: {claim_api_calls}")
+            print(f"          Paragraph length: {len(analysis.detailed_paragraph)} chars")
+        else:
+            print(f"          Analysis generation failed for claim {claim.id}")
+            # Create fallback analysis
+            fallback_analysis = ClaimAnalysis(
+                claim_id=claim.id,
+                claim_text=claim.claim_text,
+                status="Unclear",
+                detailed_paragraph=f"Unable to reach a verdict for this claim due to insufficient evidence or analysis errors. The claim '{claim.claim_text}' requires further investigation.",
+                prosecutor_evidence=prosecutor_facts[:2],
+                defender_evidence=defender_facts[:2]
+            )
+            all_claim_analyses.append(fallback_analysis)
+    
+    print(f"\n   {'='*70}")
+    print(f"    ALL CLAIMS PROCESSED")
+    print(f"   {'='*70}")
+    print(f"   Total API calls for all claims: {total_claim_api_calls}")
+    print(f"   Average per claim: {total_claim_api_calls / len(decomposed.claims):.1f}")
+    
+    # ==========================================
+    # FINAL STEP: Connect Everything to Implication (1 API call)
+    # ==========================================
+    
+    print(f"\n    FINAL STEP: Writing Implication Connection...")
+    
+    # Build comprehensive summary of all claim analyses
+    claims_summary = ""
+    for i, analysis in enumerate(all_claim_analyses, 1):
+        a_status = analysis.status if hasattr(analysis, 'status') else analysis.get('status')
+        a_text = analysis.claim_text if hasattr(analysis, 'claim_text') else analysis.get('claim_text')
+        a_para = analysis.detailed_paragraph if hasattr(analysis, 'detailed_paragraph') else analysis.get('detailed_paragraph')
         
-        # Ensure both evidence lists are included
-        final_verdict = FinalVerdict(**verdict_data)
-        final_verdict.top_prosecutor_evidence = top_prosecutor
-        final_verdict.top_defender_evidence = top_defender
+        claims_summary += f"\n{'='*60}\n"
+        claims_summary += f"CLAIM #{i}: {a_text}\n"
+        claims_summary += f"STATUS: {a_status}\n"
+        claims_summary += f"ANALYSIS:\n{a_para}\n"
+    
+    final_prompt = f"""
+    You are the Supreme Court Chief Justice delivering the FINAL VERDICT.
+    
+    CORE IMPLICATION UNDER REVIEW:
+    "{decomposed.implication}"
+    
+    INDIVIDUAL CLAIM VERDICTS:
+    {claims_summary}
+    
+    YOUR TASK:
+    1. Determine OVERALL VERDICT:
+       - "True" if implication is supported by verified claims
+       - "False" if implication is contradicted by debunked claims
+       - "Partially True" if some claims verified, others debunked (selective facts)
+       - "Unverified" if most claims are unclear or insufficient evidence
+    
+    2. Write a LONG DETAILED PARAGRAPH (200-300 words) that:
+       - Opens with clear statement of overall verdict
+       - Explains HOW the implication relates to individual claims
+       - Connects the dots between verified/debunked/unclear claims
+       - Addresses SELECTIVE USE OF FACTS if applicable (e.g., "While claim X is true, it doesn't support the broader implication because...")
+       - Explains what the evidence collectively reveals about the implication
+       - Discusses correlation vs causation where relevant
+       - Provides a comprehensive, nuanced conclusion
+       - References specific claims by number when explaining reasoning
+    
+    WRITING GUIDELINES:
+    - Be balanced and objective, not prosecutorial or defensive
+    - Acknowledge complexity where it exists
+    - Explain why certain verified claims don't necessarily support the implication
+    - Address context and how facts can be true but misleading when isolated
+    - Make connections explicit: "Although Claim 1 is verified, it doesn't support the implication because..."
+    
+    OUTPUT FORMAT:
+    Return JSON object:
+    {{
+      "overall_verdict": "True" | "False" | "Partially True" | "Unverified",
+      "implication_connection": "Your 200-300 word comprehensive paragraph...",
+      "claim_analyses": []
+    }}
+    
+    NOTE: Leave claim_analyses as empty array [] - will be populated automatically.
+    
+    EXAMPLE PARAGRAPH (Partially True):
+    "The overall implication that 'bursting firecrackers during Diwali is an ancient Hindu tradition with scriptural origins' receives a verdict of PARTIALLY TRUE. While Claim 1 regarding mentions in ancient scriptures is VERIFIED—the Skanda Purana does reference 'akash deepa' or sky lamps in religious contexts—this doesn't fully support the broader implication. The verified scriptural references describe oil lamps and ceremonial fires, not explosive firecrackers as we know them today. Claim 2, which asserts that firecracker bursting predates the British period, was DEBUNKED by historical evidence showing that gunpowder-based firecrackers were introduced to India during Mughal rule and popularized in the colonial era. The Supreme Court ruling (Claim 3) is VERIFIED but addresses environmental and health concerns rather than historical or religious legitimacy. This is a classic case of selective fact usage: while ancient fire-based rituals are indeed traditional, conflating them with modern firecrackers creates a misleading narrative. The implication uses one verified element (ancient fire rituals) to justify a different practice (explosive firecrackers) that lacks the claimed historical depth. The evidence suggests that while fire has always been central to Diwali, the specific practice of bursting firecrackers is a relatively recent addition to the celebration, making the core implication misleading despite containing a kernel of truth."
+    """
+    
+    final_verdict_data = safe_invoke_json(llm_analysis, final_prompt, FinalVerdict)
+    
+    if final_verdict_data:
+        # Ensure claim_analyses is included
+        final_verdict_data['claim_analyses'] = [
+            a.model_dump() if hasattr(a, 'model_dump') else a 
+            for a in all_claim_analyses
+        ]
+        
+        final_verdict = FinalVerdict(**final_verdict_data)
+        
+        final_api_calls = api_call_count - (1 + total_claim_api_calls)  # Subtract decomposer + claims
+        
+        print(f"    Final Verdict Written")
+        print(f"    Overall Verdict: {final_verdict.overall_verdict}")
+        print(f"    Connection paragraph: {len(final_verdict.implication_connection)} chars")
+        print(f"    API calls for final verdict: {final_api_calls}")
+        
+        print(f"\n   {'='*70}")
+        print(f"    TOTAL API CALL BREAKDOWN")
+        print(f"   {'='*70}")
+        print(f"   Phase 1 (Decomposer): 1 call")
+        print(f"   Phase 2 (Claims): {total_claim_api_calls} calls ({total_claim_api_calls / len(decomposed.claims):.1f} avg per claim)")
+        print(f"   Phase 3 (Final Verdict): {final_api_calls} call")
+        print(f"   TOTAL: {api_call_count} calls")
         
         return {"final_verdict": final_verdict}
-
-    except Exception as e:
-        print(f" ❌ Judge Error: {e}")
-        return {"final_verdict": FinalVerdict(
-            verdict="Unverified",
-            summary=f"System Error: {e}",
-            top_prosecutor_evidence=[],
-            top_defender_evidence=[],
-            verifications=[]
-        )}
+    else:
+        print(f"    Final verdict generation failed")
+        # Create fallback verdict
+        fallback_verdict = FinalVerdict(
+            overall_verdict="Unverified",
+            implication_connection=f"Unable to reach a final verdict on the implication '{decomposed.implication}' due to analysis errors. The system successfully analyzed {len(all_claim_analyses)} individual claims, but could not synthesize a final conclusion.",
+            claim_analyses=all_claim_analyses
+        )
+        return {"final_verdict": fallback_verdict}
 
 # ==============================================================================
 # 5. WORKFLOW
@@ -1057,13 +1157,11 @@ def judge_node(state: CourtroomState):
 workflow = StateGraph(CourtroomState)
 
 workflow.add_node("claim_decomposer", claim_decomposer_node)
-workflow.add_node("investigator", investigator_node)
-workflow.add_node("judge", judge_node)
+workflow.add_node("investigator_judge", investigator_and_judge_node)
 
 workflow.add_edge(START, "claim_decomposer")
-workflow.add_edge("claim_decomposer", "investigator")
-workflow.add_edge("investigator", "judge")
-workflow.add_edge("judge", END)
+workflow.add_edge("claim_decomposer", "investigator_judge")
+workflow.add_edge("investigator_judge", END)
 
 app = workflow.compile()
 
@@ -1081,81 +1179,123 @@ def analyze_text(transcript: str) -> dict:
         return {"error": str(e)}
 
 # ==============================================================================
-# 7. RUNNER
+# 7. PRETTY PRINTER FOR RESULTS
+# ==============================================================================
+
+def print_verdict_report(verdict_dict):
+    """Pretty print the final verdict in the new format"""
+    if not verdict_dict:
+        print("No verdict data to display")
+        return
+    
+    v = verdict_dict
+    
+    print("\n" + "="*80)
+    print("FINAL VERDICT REPORT")
+    print("="*80)
+    
+    # Overall Verdict
+    overall = v.get('overall_verdict') if isinstance(v, dict) else v.overall_verdict
+    print(f"\n OVERALL VERDICT: {overall.upper()}")
+    print("="*80)
+    
+    # Implication Connection
+    connection = v.get('implication_connection') if isinstance(v, dict) else v.implication_connection
+    print(f"\n IMPLICATION ANALYSIS:\n")
+    print(connection)
+    
+    # Individual Claim Analyses
+    analyses = v.get('claim_analyses') if isinstance(v, dict) else v.claim_analyses
+    
+    if analyses:
+        print("\n" + "="*80)
+        print("DETAILED CLAIM-BY-CLAIM ANALYSIS")
+        print("="*80)
+        
+        for analysis in analyses:
+            a_id = analysis.get('claim_id') if isinstance(analysis, dict) else analysis.claim_id
+            a_text = analysis.get('claim_text') if isinstance(analysis, dict) else analysis.claim_text
+            a_status = analysis.get('status') if isinstance(analysis, dict) else analysis.status
+            a_para = analysis.get('detailed_paragraph') if isinstance(analysis, dict) else analysis.detailed_paragraph
+            a_pros = analysis.get('prosecutor_evidence') if isinstance(analysis, dict) else analysis.prosecutor_evidence
+            a_def = analysis.get('defender_evidence') if isinstance(analysis, dict) else analysis.defender_evidence
+            
+            print(f"\n{'='*80}")
+            print(f"CLAIM #{a_id}: {a_text}")
+            print(f"STATUS: {a_status}")
+            print(f"{'='*80}")
+            
+            print(f"\n{a_para}")
+            
+            # Prosecutor Facts
+            if a_pros:
+                print(f"\n PROSECUTOR FACTS (Contradicting):")
+                for i, fact in enumerate(a_pros, 1):
+                    f_url = fact.get('source_url') if isinstance(fact, dict) else fact.source_url
+                    f_key = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
+                    f_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
+                    
+                    print(f"\n   {i}. {f_key}")
+                    print(f"       Source: {f_url}")
+                    print(f"       Trust: {f_trust}")
+            else:
+                print(f"\n PROSECUTOR FACTS: No contradicting evidence found")
+            
+            # Defender Facts
+            if a_def:
+                print(f"\n DEFENDER FACTS (Supporting):")
+                for i, fact in enumerate(a_def, 1):
+                    f_url = fact.get('source_url') if isinstance(fact, dict) else fact.source_url
+                    f_key = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
+                    f_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
+                    
+                    print(f"\n   {i}. {f_key}")
+                    print(f"       Source: {f_url}")
+                    print(f"       Trust: {f_trust}")
+            else:
+                print(f"\n DEFENDER FACTS: No supporting evidence found")
+    
+    print("\n" + "="*80)
+
+# ==============================================================================
+# 8. RUNNER
 # ==============================================================================
 
 if __name__ == "__main__":
-    transcript = "Umar Khalid was innocent."
+    transcript = "Bursting firecrackers is an ancient Hindu tradition mentioned in the Skanda Purana and predates the British colonial period in India."
     
-    print(f"🚀 ENGINE STARTING: '{transcript}'")
-    print(f"⏱️ Rate Limiting: {API_CALL_DELAY}s delay")
-    print(f"📊 Model: {MODEL_NAME}")
+    print(f" OPTIMIZED FACT-CHECK ENGINE STARTING")
+    print("="*80)
+    print(f" TRANSCRIPT: '{transcript}'")
+    print("="*80)
+    print(f"\n API CALL TARGET:")
+    print(f"   • Phase 1 (Decomposer): 1 call")
+    print(f"   • Phase 2 (Per Claim): ≤5 calls each")
+    print(f"   • Phase 3 (Final Verdict): 1 call")
+    print(f" Rate Limiting: {API_CALL_DELAY}s delay between calls")
+    print(f" Model: {MODEL_NAME}")
     
     try:
         start_time = time.time()
         result = app.invoke({"transcript": transcript})
         elapsed = time.time() - start_time
         
-        v = result.get('final_verdict')
+        print("\n" + "="*80)
+        print(f" EXECUTION COMPLETE")
+        print("="*80)
+        print(f"Total Runtime: {elapsed / 60:.1f} minutes ({elapsed:.0f} seconds)")
+        print(f"Total API Calls: {api_call_count}")
+        print(f"Average Time per Call: {elapsed / api_call_count:.1f}s")
         
-        print("\n" + "="*70)
-        print("🏆 FINAL VERDICT REPORT")
-        print("="*70)
-        print(f"⏱️ Total runtime: {elapsed / 60:.1f} minutes")
-        print(f"📊 Total API calls made: {api_call_count}")
-        
-        if v:
-            verdict_val = v.get('verdict') if isinstance(v, dict) else v.verdict
-            summary_val = v.get('summary') if isinstance(v, dict) else v.summary
-            pros_evidence = v.get('top_prosecutor_evidence') if isinstance(v, dict) else v.top_prosecutor_evidence
-            def_evidence = v.get('top_defender_evidence') if isinstance(v, dict) else v.top_defender_evidence
-            verifications = v.get('verifications') if isinstance(v, dict) else v.verifications
-
-            print(f"\n⚖️ JUDGEMENT: {verdict_val.upper()}")
-            print(f"📝 SUMMARY:\n{summary_val}")
-            
-            if pros_evidence:
-                print("\n🔴 TOP 3 PROSECUTOR EVIDENCE (Against):")
-                for i, ev in enumerate(pros_evidence, 1):
-                    ev_url = ev.get('source_url') if isinstance(ev, dict) else ev.source_url
-                    ev_quote = ev.get('quote') if isinstance(ev, dict) else ev.quote
-                    ev_trust = ev.get('trust_score') if isinstance(ev, dict) else ev.trust_score
-                    ev_rel = ev.get('relevance_score') if isinstance(ev, dict) else ev.relevance_score
-                    
-                    print(f"\n   #{i} Trust: {ev_trust} | Relevance: {ev_rel}/10")
-                    print(f"   📎 {ev_url}")
-                    print(f"   💬 \"{ev_quote}\"")
-                    print("   " + "-"*60)
-            
-            if def_evidence:
-                print("\n🟢 TOP 3 DEFENDER EVIDENCE (Supporting):")
-                for i, ev in enumerate(def_evidence, 1):
-                    ev_url = ev.get('source_url') if isinstance(ev, dict) else ev.source_url
-                    ev_quote = ev.get('quote') if isinstance(ev, dict) else ev.quote
-                    ev_trust = ev.get('trust_score') if isinstance(ev, dict) else ev.trust_score
-                    ev_rel = ev.get('relevance_score') if isinstance(ev, dict) else ev.relevance_score
-                    
-                    print(f"\n   #{i} Trust: {ev_trust} | Relevance: {ev_rel}/10")
-                    print(f"   📎 {ev_url}")
-                    print(f"   💬 \"{ev_quote}\"")
-                    print("   " + "-"*60)
-            
-            if verifications:
-                print("\n🔍 DETAILED VERIFICATION LOG:")
-                for i, check in enumerate(verifications, 1):
-                    c_claim = check.get('claim_text') if isinstance(check, dict) else check.claim_text
-                    c_status = check.get('status') if isinstance(check, dict) else check.status
-                    c_method = check.get('method_used') if isinstance(check, dict) else check.method_used
-                    c_details = check.get('details') if isinstance(check, dict) else check.details
-                    
-                    print(f"\n   #{i} CLAIM: \"{c_claim}\"")
-                    print(f"      📍 METHOD:  {c_method}")
-                    print(f"      ✅ STATUS:  {c_status}")
-                    print(f"      📜 PROOF:   {c_details}")
-                    print("      " + "-"*60)
+        # Print the formatted verdict
+        verdict = result.get('final_verdict')
+        if verdict:
+            print_verdict_report(verdict)
         else:
-            print("❌ No verdict generated.")
+            print("\nNo verdict generated")
 
     except Exception as e:
-        print(f"\n💥 SYSTEM FAILURE: {e}")
-        print(f"📊 API calls completed before failure: {api_call_count}")
+        print(f"\n SYSTEM FAILURE: {e}")
+        print(f" API calls completed before failure: {api_call_count}")
+        import traceback
+        traceback.print_exc()
