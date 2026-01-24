@@ -6,6 +6,9 @@ import './TryPage.css';
 import ResultsDisplay from './ResultsDisplay';
 
 function TryPage() {
+    // API URL from environment variable (or fallback to localhost)
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
     // State for managing the page
     const [history, setHistory] = useState([]);
     const [currentResult, setCurrentResult] = useState(null);
@@ -65,7 +68,7 @@ function TryPage() {
 
         try {
             const response = await axios.post(
-                "http://localhost:8000/api/upload-video",
+                `${API_URL}/api/upload-video`,
                 formData,
                 { headers: { "Content-Type": "multipart/form-data" } }
             );
@@ -101,7 +104,7 @@ function TryPage() {
 
         try {
             const response = await axios.post(
-                "http://localhost:8000/api/analyze-text",
+                `${API_URL}/api/analyze-text`,
                 { text: text }
             );
 

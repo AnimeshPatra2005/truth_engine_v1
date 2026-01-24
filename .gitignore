@@ -1,1 +1,39 @@
-/.env
+# Environment variables
+.env
+*.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Backend uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Frontend
+node_modules/
+dist/
+build/
+.vite/
+*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+backend/__pycache__/main.cpython-313.pyc
+backend/services/__pycache__/tools.cpython-313.pyc
+backend/services/__pycache__/llm_engine.cpython-313.pyc
+backend/api/__pycache__/upload.cpython-313.pyc
+backend/__pycache__/main.cpython-313.pyc
