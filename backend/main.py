@@ -9,7 +9,13 @@ app = FastAPI()
 # --- CORS Middleware (Fixed syntax) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost",
+        "https://truth-engine-v1.vercel.app",
+        "https://*.vercel.app"  # For preview deployments
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
