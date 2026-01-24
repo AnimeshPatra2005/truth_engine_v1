@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { FaPlus, FaHistory, FaFileUpload, FaPaperPlane, FaRobot, FaHome } from 'react-icons/fa';
 import './TryPage.css';
+import ResultsDisplay from './ResultsDisplay';
 
 function TryPage() {
     // State for managing the page
@@ -183,7 +184,7 @@ function TryPage() {
                         </div>
                     )}
 
-                    {/* Results will go here */}
+                    {currentResult && currentResult.verdict && <ResultsDisplay verdict={currentResult.verdict} />}
                 </div>
 
                 {/* Input bar at the bottom */}
