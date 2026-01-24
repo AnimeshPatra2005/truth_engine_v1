@@ -4,7 +4,11 @@ python-multipart
 python-dotenv
 requests
 google-generativeai
+langchain-google-genai
+langgraph
+pydantic
+tenacity
+tavily-python
 pandas
 yt-dlp
 importlib-metadata>=7.0.0
-# (Make sure 'torch' and 'openai-whisper' are NOT here)
