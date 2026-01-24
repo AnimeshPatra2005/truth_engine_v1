@@ -38,8 +38,148 @@ llm_search = ChatGoogleGenerativeAI(
 )
 
 # ==============================================================================
-# 2. ROBUST UTILS & TOOLS
+# 2. TRUSTED DOMAINS CATALOG
 # ==============================================================================
+
+TRUSTED_DOMAINS = {
+    "government": [
+        # India Government
+        "gov.in", "nic.in", "indiankanoon.org", "supremecourtofindia.nic.in",
+        "mea.gov.in", "pib.gov.in", "asi.nic.in", "nationalarchives.gov.in",
+        "vedicheritage.gov.in",
+        # International Government
+        "gov", "gov.uk", "europa.eu", "un.org", "who.int", "cdc.gov",
+        "nih.gov", "nasa.gov", "noaa.gov", "epa.gov", "fda.gov"
+    ],
+    "academic": [
+        "edu", "ac.uk", "ac.in", "arxiv.org", "jstor.org", "pubmed.ncbi.nlm.nih.gov",
+        "scholar.google.com", "researchgate.net", "nature.com", "science.org",
+        "springer.com", "sciencedirect.com", "ieee.org", "acm.org",
+        "thelancet.com", "bmj.com", "jama.jamanetwork.com"
+    ],
+    "legal": [
+        "indiankanoon.org", "supremecourtofindia.nic.in", "livelaw.in",
+        "barandbench.com", "justia.com", "law.cornell.edu", "scotusblog.com"
+    ],
+    "news_trusted": [
+        "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "thehindu.com",
+        "theguardian.com", "nytimes.com", "wsj.com", "ft.com", "economist.com",
+        "aljazeera.com", "npr.org", "pbs.org"
+    ],
+    "fact_checkers": [
+        "snopes.com", "factcheck.org", "politifact.com", "fullfact.org",
+        "altnews.in", "boomlive.in", "thequint.com/news/webqoof",
+        "africacheck.org", "factcheckni.org"
+    ],
+    "religious_scholarly": [
+        "sacred-texts.com", "britannica.com", "oxfordreference.com",
+        "encyclopedia.com", "worldcat.org"
+    ],
+    "international_orgs": [
+        "un.org", "who.int", "worldbank.org", "imf.org", "oecd.org",
+        "wto.org", "icc-cpi.int", "icj-cij.org", "unhcr.org"
+    ],
+    "untrusted": [
+        "quora.com", "reddit.com", "twitter.com", "x.com", "facebook.com",
+        "instagram.com", "tiktok.com", "pinterest.com", "medium.com",
+        "linkedin.com", "tumblr.com", "buzzfeed.com", "9gag.com"
+    ]
+}
+
+def extract_domain(url: str) -> str:
+    """Extract domain from URL for trust scoring."""
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        # Remove www. prefix
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        return domain
+    except:
+        return url
+
+def get_domain_trust_level(url: str) -> Literal["High", "Medium", "Low"]:
+    """
+    Determine trust level of a domain based on universal catalog.
+    
+    Returns:
+        "High" - Government, academic, legal, major news, fact-checkers
+        "Medium" - Other news sources, Wikipedia, established organizations
+        "Low" - Social media, forums, blogs, unknown sources
+    """
+    domain = extract_domain(url)
+    
+    # Check untrusted first
+    for untrusted in TRUSTED_DOMAINS["untrusted"]:
+        if untrusted in domain or domain in untrusted:
+            return "Low"
+    
+    # Check high-trust categories
+    high_trust_categories = [
+        "government", "academic", "legal", "fact_checkers", 
+        "religious_scholarly", "international_orgs"
+    ]
+    
+    for category in high_trust_categories:
+        for trusted in TRUSTED_DOMAINS[category]:
+            if trusted in domain or domain in trusted:
+                return "High"
+    
+    # Check news sources (high trust)
+    for trusted_news in TRUSTED_DOMAINS["news_trusted"]:
+        if trusted_news in domain or domain in trusted_news:
+            return "High"
+    
+    # Wikipedia gets medium trust (needs citation verification)
+    if "wikipedia.org" in domain:
+        return "Medium"
+    
+    # Default to Low for unknown sources
+    return "Low"
+
+def is_trusted_domain(url: str, suggested_domains: List[str] = None) -> bool:
+    """
+    Check if URL is from a trusted domain.
+    
+    Args:
+        url: URL to check
+        suggested_domains: Optional list of domain-specific trusted sources
+    
+    Returns:
+        True if domain is trusted, False otherwise
+    """
+    domain = extract_domain(url)
+    
+    # Check against suggested domains if provided
+    if suggested_domains:
+        for suggested in suggested_domains:
+            if suggested in domain or domain in suggested:
+                return True
+    
+    # Check against universal trust catalog
+    trust_level = get_domain_trust_level(url)
+    return trust_level == "High"
+
+# ==============================================================================
+# 3. ROBUST UTILS & TOOLS
+# ==============================================================================
+
+# NOTE: Modified search_web wrapper to support variable result counts
+def search_web_with_count(query: str, num_results: int = 5, intent: str = "general") -> list:
+    """
+    Wrapper around search_web that allows specifying number of results.
+    If your tools.py search_web doesn't support max_results parameter,
+    this wrapper will just call it and return the first num_results items.
+    """
+    try:
+        # Call your existing search_web function
+        results = search_web(query, intent=intent)
+        
+        # Return only the requested number of results
+        return results[:num_results] if results else []
+    except Exception as e:
+        print(f"Search error: {e}")
+        return []
 
 def clean_llm_json(raw_text: str, expect_array: bool = None) -> str:
     """
@@ -164,7 +304,7 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
     for attempt in range(max_retries):
         try:
             api_call_count += 1
-            print(f"   ⏳ [API Call #{api_call_count}] Waiting {API_CALL_DELAY} seconds before call...")
+            print(f"   [API Call #{api_call_count}] Waiting {API_CALL_DELAY} seconds before call...")
             time.sleep(API_CALL_DELAY)
             
             response = model.invoke(final_prompt)
@@ -188,7 +328,7 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
             else:
                 content = str(response)
             
-            #  USE CENTRALIZED JSON CLEANER (expects object for Pydantic validation)
+            # USE CENTRALIZED JSON CLEANER (expects object for Pydantic validation)
             cleaned_content = clean_llm_json(content, expect_array=False)
             
             # Parse and validate
@@ -200,8 +340,8 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
             except json.JSONDecodeError as je:
                 # Log the error with raw content for debugging
                 print(f"    JSON Parse Error: {je}")
-                print(f"   📄 Raw response (first 300 chars): {content[:300]}")
-                print(f"   🧹 Cleaned content (first 300 chars): {cleaned_content[:300]}")
+                print(f"    Raw response (first 300 chars): {content[:300]}")
+                print(f"    Cleaned content (first 300 chars): {cleaned_content[:300]}")
                 raise  # Re-raise to trigger retry logic
 
         except Exception as e:
@@ -257,7 +397,7 @@ Rules:
     for attempt in range(max_retries):
         try:
             api_call_count += 1
-            print(f"   ⏳ [API Call #{api_call_count}] Waiting {API_CALL_DELAY} seconds before call...")
+            print(f"   [API Call #{api_call_count}] Waiting {API_CALL_DELAY} seconds before call...")
             time.sleep(API_CALL_DELAY)
             
             response = model.invoke(final_prompt)
@@ -302,8 +442,8 @@ Rules:
                 
             except json.JSONDecodeError as je:
                 print(f"    JSON Parse Error: {je}")
-                print(f"   📄 Raw response (first 300 chars): {content[:300]}")
-                print(f"   🧹 Cleaned content (first 300 chars): {cleaned_content[:300]}")
+                print(f"    Raw response (first 300 chars): {content[:300]}")
+                print(f"    Cleaned content (first 300 chars): {cleaned_content[:300]}")
                 raise
 
         except Exception as e:
@@ -352,162 +492,206 @@ def check_google_fact_check_tool(query: str):
         return "Tool Unavailable"
 
 def consensus_search_tool(claim: str):
-    """Tool: Performs Majority Vote search with Network Safety."""
-    # EXCLUDE unreliable sources from consensus check
-    query = f'is it true that "{claim}" -site:quora.com -site:reddit.com -site:stackexchange.com -site:twitter.com -site:x.com -site:medium.com -site:linkedin.com'
-    print(f"    CONSENSUS CHECK: {query}")
+    """
+    Tool: Performs Majority Vote search with Network Safety.
+    Searches 10 websites (if available) for consensus checking.
+    EXCLUDES all untrusted domains to prevent contamination.
+    
+    Returns structured dict with results for Gemini analysis.
+    """
+    # Build exclusion list from TRUSTED_DOMAINS catalog
+    exclusions = []
+    for domain in TRUSTED_DOMAINS["untrusted"]:
+        exclusions.append(f"-site:{domain}")
+    
+    # Additional social media and forum sites to exclude
+    additional_exclusions = [
+        "-site:facebook.com",
+        "-site:instagram.com", 
+        "-site:tiktok.com",
+        "-site:pinterest.com",
+        "-site:tumblr.com",
+        "-site:buzzfeed.com",
+        "-site:9gag.com",
+        "-site:stackexchange.com",
+        "-site:yahoo.com/answers",
+        "-site:answers.com",
+        "-site:ask.com"
+    ]
+    
+    all_exclusions = " ".join(exclusions + additional_exclusions)
+    
+    # Build query with claim and exclusions
+    query = f'is it true that "{claim}" {all_exclusions}'
+    
+    print(f"    CONSENSUS CHECK: {query[:150]}...")
+    print(f"    Excluding {len(exclusions) + len(additional_exclusions)} untrusted domain types")
+    
     try:
-        results = search_web(query)
-        if not results: return "No results found."
-        return str(results)[:5000]
+        # CRITICAL: Request 10 results for proper majority voting
+        results = search_web_with_count(query, num_results=10, intent="consensus")
+        
+        if not results:
+            return {"success": False, "results": [], "count": 0}
+        
+        # Additional client-side filtering for safety
+        filtered_results = []
+        for result in results:
+            url = result.get('url', '').lower()
+            domain = extract_domain(url)
+            
+            # Double-check: Skip if domain is in untrusted list
+            is_untrusted = False
+            for untrusted in TRUSTED_DOMAINS["untrusted"]:
+                if untrusted in domain:
+                    is_untrusted = True
+                    print(f"       ⚠️ Filtered out untrusted source: {domain}")
+                    break
+            
+            if not is_untrusted:
+                filtered_results.append(result)
+        
+        print(f"       Consensus search: {len(results)} retrieved, {len(filtered_results)} after filtering")
+        
+        # Return structured data for Gemini analysis
+        return {
+            "success": True,
+            "results": filtered_results,
+            "count": len(filtered_results)
+        }
     except Exception as e:
         print(f"       Network Error during consensus check: {e}")
-        return "Search failed due to network error."
+        return {"success": False, "results": [], "count": 0, "error": str(e)}
 
-def intelligent_quote_summarizer(quote: str, claim_context: str) -> str:
+def analyze_consensus_with_gemini(claim: str, search_results: list) -> dict:
     """
-    AI-powered quote summarization - preserves ALL specifics while condensing to one-liner.
-    Uses AI to intelligently extract key facts without truncation loss.
+    Analyzes search results using Gemini to determine consensus.
+    
+    Returns:
+        {
+            "supports": int,  # Number of sources supporting the claim
+            "contradicts": int,  # Number of sources contradicting
+            "neutral": int,  # Number of neutral/unclear sources
+            "confidence": "High" | "Medium" | "Low",
+            "reasoning": str
+        }
     """
-    if len(quote) <= 200:
-        return quote  # If already short, return as-is
+    if not search_results:
+        return {
+            "supports": 0,
+            "contradicts": 0,
+            "neutral": 0,
+            "confidence": "Low",
+            "reasoning": "No search results available for consensus analysis"
+        }
     
-    try:
-        summary_prompt = f"""
-        Condense this quote into a SINGLE POWERFUL LINE that preserves ALL critical details.
-        
-        CONTEXT: {claim_context}
-        
-        ORIGINAL QUOTE:
-        "{quote}"
-        
-        YOUR TASK:
-        - Extract the MOST IMPORTANT fact or statement
-        - Keep ALL specifics: numbers, dates, names, facts, citations
-        - Make it ONE clear, punchy line (max 150 chars)
-        - Preserve exact wording where possible (no paraphrasing)
-        - Do NOT lose any critical information through summarization
-        
-        Example transformations:
-         BAD: "According to..." (loses the actual content)
-         GOOD: "Study shows 87% of X resulted in Y (Journal Z, 2024)"
-        
-        Return ONLY the one-liner, no explanation.
-        """
-        
-        response = llm_analysis.invoke(summary_prompt)
-        
-        if hasattr(response, 'content'):
-            content = response.content
-            
-            # Handle different response formats
-            if isinstance(content, dict):
-                # Gemini sometimes returns {'type': 'text', 'text': '...'}
-                content = content.get('text', str(content))
-            elif isinstance(content, list):
-                content = ' '.join([
-                    item.get('text', str(item)) if isinstance(item, dict) else str(item)
-                    for item in content
-                ])
-            else:
-                content = str(content)
-        else:
-            content = str(response)
-        
-        content = content.strip().strip('"').strip()
-        
-        # If AI response is reasonable length, use it; otherwise use original truncated
-        if 20 < len(content) < 300:
-            print(f"       Summarized: {content}")
-            return content
-        else:
-            # Fallback to truncation if summary fails
-            return quote[:200]
+    # Build summary of all search results
+    results_text = ""
+    for i, result in enumerate(search_results, 1):
+        results_text += f"\n--- SOURCE {i} ---\n"
+        results_text += f"Title: {result.get('title', 'Untitled')}\n"
+        results_text += f"URL: {result.get('url', 'unknown')}\n"
+        results_text += f"Content: {result.get('snippet', '')[:500]}\n"
+        results_text += f"Relevance Score: {result.get('score', 0)}\n"
     
-    except Exception as e:
-        print(f"       Summarization failed: {e}, using truncation fallback")
-        return quote[:200]
-
-def build_prosecutor_query(claim_text: str) -> str:
-    """Hardcoded prosecutor query builder - no LLM hallucination risk."""
-    # Prosecutor tries to DISPROVE the claim
-    keywords = "debunked OR false OR myth OR fake OR misleading OR contradiction OR disproven"
-    specifics = "supporting facts OR evidence OR proof OR citation"
-    query = f'"{claim_text}" AND ({keywords}) AND ({specifics})'
-    return query
-
-def build_defender_query(claim_text: str) -> str:
-    """Hardcoded defender query builder - no LLM hallucination risk."""
-    # Defender tries to SUPPORT the claim
-    keywords = "proven OR confirmed OR verified OR true OR evidence OR citation OR proof"
-    specifics = "supporting facts OR evidence OR specific details"
-    query = f'"{claim_text}" AND ({keywords}) AND ({specifics})'
-    return query
-
-def extract_domain(url: str) -> str:
-    """Extract domain from URL for trust scoring."""
-    try:
-        parsed = urlparse(url)
-        domain = parsed.netloc.lower()
-        # Remove www. prefix
-        if domain.startswith('www.'):
-            domain = domain[4:]
-        return domain
-    except:
-        return url
-
-def is_trusted_domain(url: str, trusted_domains: List[str]) -> bool:
-    """Check if URL is from a trusted domain."""
-    domain = extract_domain(url)
+    prompt = f"""
+    Analyze these {len(search_results)} search results to determine web consensus on a claim.
     
-    # Check exact matches
-    if domain in trusted_domains:
-        return True
+    CLAIM TO VERIFY: "{claim}"
     
-    # Check if any trusted domain is a substring (e.g., nih.gov matches pubmed.ncbi.nlm.nih.gov)
-    for trusted in trusted_domains:
-        if trusted in domain or domain in trusted:
-            return True
+    SEARCH RESULTS:
+    {results_text}
     
-    # Check for government/educational domains
-    if domain.endswith('.gov') or domain.endswith('.edu') or domain.endswith('.gov.in') or domain.endswith('.nic.in'):
-        return True
+    YOUR TASK:
+    For EACH of the {len(search_results)} sources, determine if it:
+    - SUPPORTS the claim (agrees, confirms, provides evidence for)
+    - CONTRADICTS the claim (disagrees, debunks, provides evidence against)
+    - NEUTRAL (doesn't clearly support or contradict, or is ambiguous)
     
-    # Check for major academic/scientific publishers
-    academic_indicators = ['journal', 'academic', 'science', 'research', 'university', 'institute']
-    if any(indicator in domain for indicator in academic_indicators):
-        return True
+    Count carefully and provide:
+    1. Number supporting
+    2. Number contradicting
+    3. Number neutral
+    4. Overall confidence level:
+       - "High" if 70%+ agree (7+ out of 10 support OR contradict)
+       - "Medium" if 50-69% agree (5-6 out of 10)
+       - "Low" if less than 50% agree (4 or fewer, or conflicting results)
+    5. Brief reasoning (2-3 sentences)
     
-    return False
+    OUTPUT FORMAT (JSON):
+    {{
+      "supports": <number>,
+      "contradicts": <number>,
+      "neutral": <number>,
+      "confidence": "High" | "Medium" | "Low",
+      "reasoning": "Brief explanation of the consensus pattern"
+    }}
+    
+    IMPORTANT: 
+    - The numbers MUST add up to {len(search_results)}
+    - Be strict - only count clear support/contradiction
+    - When in doubt, mark as neutral
+    """
+    
+    class ConsensusAnalysis(BaseModel):
+        supports: int = Field(description="Number of sources supporting the claim")
+        contradicts: int = Field(description="Number of sources contradicting the claim")
+        neutral: int = Field(description="Number of neutral/unclear sources")
+        confidence: Literal["High", "Medium", "Low"] = Field(description="Confidence level based on agreement percentage")
+        reasoning: str = Field(description="Brief explanation of consensus pattern")
+    
+    analysis = safe_invoke_json(llm_search, prompt, ConsensusAnalysis)
+    
+    if not analysis:
+        return {
+            "supports": 0,
+            "contradicts": 0,
+            "neutral": len(search_results),
+            "confidence": "Low",
+            "reasoning": "Failed to analyze consensus"
+        }
+    
+    return analysis
 
 # ==============================================================================
-# 3. SCHEMAS - RESTRUCTURED FOR NEW OUTPUT FORMAT
+# 4. SCHEMAS
 # ==============================================================================
 
 class ClaimUnit(BaseModel):
     id: int
     claim_text: str = Field(description="The specific claim statement")
     topic_category: str = Field(description="Topic category for this claim")
-    base_query: str = Field(description="5-7 keywords for web search")
-    prosecutor_query: str = Field(default="", description="Search query to find evidence DISPROVING this claim")
-    defender_query: str = Field(default="", description="Search query to find evidence SUPPORTING this claim")
+    prosecutor_query: str = Field(description="Search query to find evidence DISPROVING this claim with 'supporting documents' phrase")
+    defender_query: str = Field(description="Search query to find evidence SUPPORTING this claim with 'supporting documents' phrase")
 
 class DecomposedClaims(BaseModel):
     implication: str = Field(description="The core narrative or hidden conclusion of the text")
     claims: List[ClaimUnit] = Field(description="List of atomic, de-duplicated claims (Max 5)", max_items=5)
 
-class QueryPair(BaseModel):
-    claim_id: int
-    base_query: str = Field(description="Core keywords extracted from claim")
-
-class OptimizedQueries(BaseModel):
-    queries: List[QueryPair]
-
-class EvidencePoint(BaseModel):
-    """Single piece of evidence with checkable facts"""
+class Evidence(BaseModel):
+    """Single piece of evidence extracted from search results"""
     source_url: str
     key_fact: str = Field(description="Specific fact with numbers/dates/names/citations - NO vague statements")
-    trust_score: Literal["High", "Low"]
+    side: Literal["prosecutor", "defender"] = Field(description="Which side this evidence supports")
+    suggested_trusted_domains: List[str] = Field(
+        description="3-5 domain-specific trusted sources for verification",
+        max_items=5
+    )
+
+class ClaimEvidence(BaseModel):
+    """Evidence collection for a single claim"""
+    claim_id: int
+    prosecutor_facts: List[Evidence] = Field(max_items=2, description="Top 2 contradicting facts")
+    defender_facts: List[Evidence] = Field(max_items=2, description="Top 2 supporting facts")
+
+class VerifiedEvidence(BaseModel):
+    """Evidence after 3-tier fact-checking"""
+    source_url: str
+    key_fact: str
+    side: Literal["prosecutor", "defender"]
+    trust_score: Literal["High", "Medium", "Low"]
+    verification_method: str = Field(description="Which tier verified this: Tier1-FactCheck / Tier2-Domain / Tier3-Consensus")
+    verification_details: str = Field(description="Details of verification result")
 
 class ClaimAnalysis(BaseModel):
     """Analysis for a single claim"""
@@ -515,8 +699,8 @@ class ClaimAnalysis(BaseModel):
     claim_text: str
     status: Literal["Verified", "Debunked", "Unclear"]
     detailed_paragraph: str = Field(description="Crystal clear explanation (150-250 words) considering both sides")
-    prosecutor_evidence: List[EvidencePoint] = Field(max_items=2, description="Top 2 contradicting facts with specifics")
-    defender_evidence: List[EvidencePoint] = Field(max_items=2, description="Top 2 supporting facts with specifics")
+    prosecutor_evidence: List[VerifiedEvidence] = Field(max_items=2)
+    defender_evidence: List[VerifiedEvidence] = Field(max_items=2)
 
 class FinalVerdict(BaseModel):
     overall_verdict: Literal["True", "False", "Partially True", "Unverified"]
@@ -526,14 +710,24 @@ class FinalVerdict(BaseModel):
 class CourtroomState(TypedDict):
     transcript: str
     decomposed_data: Optional[DecomposedClaims]
+    all_claim_evidence: Optional[List[ClaimEvidence]]
+    verified_evidence: Optional[List[dict]]
     final_verdict: Optional[FinalVerdict]
 
 # ==============================================================================
-# 4. NODES - OPTIMIZED STRUCTURE
+# 5. NODES
 # ==============================================================================
 
 def claim_decomposer_node(state: CourtroomState):
-    """PHASE 1: Decompose transcript into claims + generate search queries (1 API CALL)"""
+    """
+    PHASE 1: Decompose transcript into claims + generate search queries (1 API CALL)
+    
+    Requirements:
+    - Extract max 5 claims
+    - Combine strongly related topics
+    - Generate defender query with 'supporting documents' phrase
+    - Generate prosecutor query with 'supporting documents' phrase
+    """
     print("\nSMART DECOMPOSER: Analyzing Transcript & Generating Queries...")
     print("TARGET: 1 API call for decomposition + query generation")
     transcript = state['transcript']
@@ -550,6 +744,7 @@ def claim_decomposer_node(state: CourtroomState):
         
         2. CLAIM EXTRACTION RULES (Max 5 claims):
            - ATOMIC: ONE testable fact per claim (max 30 words each)
+           - COMBINE strongly related topics that can be covered in a single search
            - SPLIT if two independent facts joined by AND
            - KEEP TOGETHER if claim contains supporting context (WHY/HOW/WHERE)
            - PRESERVE keywords: names, dates, Sanskrit terms, numbers
@@ -559,6 +754,11 @@ def claim_decomposer_node(state: CourtroomState):
             Split into:
               - "Ritual mentioned in ancient scriptures"
               - "Supreme Court classified ritual as celebratory activity"
+           
+           Combine Examples:
+            "Firecrackers mentioned in Skanda Purana" + "Firecrackers mentioned in Ramayana"
+            Combine into:
+              - "Firecrackers mentioned in ancient Hindu scriptures like Skanda Purana and Ramayana"
         
         3. PER-CLAIM CONTEXT ANALYSIS:
            For EACH claim, determine:
@@ -569,19 +769,27 @@ def claim_decomposer_node(state: CourtroomState):
                "Education/Academia", "Social Issues", "Ethics/Philosophy", "Media/Entertainment",
                "News/Viral", "General"]
            
-           b) trusted_domains - 3-5 authoritative sources for THIS specific topic:
-              * Science/Technology: nature.com, science.org, arxiv.org, ieee.org, nasa.gov
-              * Law/Policy (India): indiankanoon.org, supremecourtofindia.nic.in, livelaw.in, barandbench.com
-              * Law/Policy (Global): justia.com, law.cornell.edu, oecd.org, un.org
-              * Politics/Geopolitics: mea.gov.in, un.org, cfr.org, brookings.edu, bbc.com
-              * Mythology/Religion: sacred-texts.com, britannica.com, jstor.org, vedicheritage.gov.in
-              * History/Culture: britannica.com, jstor.org, asi.nic.in, nationalarchives.gov.in
-              * Health/Medicine: who.int, cdc.gov, nih.gov, pubmed.ncbi.nlm.nih.gov, mayoclinic.org
-              * Environment/Climate: ipcc.ch, noaa.gov, epa.gov, climate.nasa.gov
-              * News/Viral: reuters.com, apnews.com, bbc.com, thehindu.com, altnews.in, snopes.com
-              * General: britannica.com, wikipedia.org (with citation check)
+           b) prosecutor_query - Query to find CONTRADICTING evidence:
+              CRITICAL REQUIREMENTS:
+              - Start with the claim keywords
+              - Add terms: "false OR debunked OR myth OR fake OR misleading OR contradiction OR disproven"
+              - ALWAYS include: "supporting documents OR supporting texts OR supporting evidence"
+              - This ensures Tavily returns actual evidence/documents, not just claims
               
-              Government sites (.gov.in, .nic.in, .gov, .edu) are trusted for their domain.
+              Format: "[claim keywords] AND (false OR debunked OR myth) AND (supporting documents OR supporting texts OR supporting evidence)"
+              
+              Example: "firecrackers ancient Hindu scriptures AND (false OR debunked OR myth) AND (supporting documents OR supporting texts OR supporting evidence)"
+           
+           c) defender_query - Query to find SUPPORTING evidence:
+              CRITICAL REQUIREMENTS:
+              - Start with the claim keywords
+              - Add terms: "proven OR confirmed OR verified OR true OR evidence OR citation OR proof"
+              - ALWAYS include: "supporting documents OR supporting texts OR supporting evidence"
+              - Write as if inviting supportive documents from Google
+              
+              Format: "[claim keywords] AND (proven OR confirmed OR verified) AND (supporting documents OR supporting texts OR supporting evidence)"
+              
+              Example: "firecrackers ancient Hindu scriptures AND (proven OR confirmed OR verified) AND (supporting documents OR supporting texts OR supporting evidence)"
 
         OUTPUT FORMAT:
         Return a JSON OBJECT with this structure:
@@ -593,17 +801,11 @@ def claim_decomposer_node(state: CourtroomState):
               "id": 1,
               "claim_text": "Atomic claim statement",
               "topic_category": "Category name",
-              "trusted_domains": ["domain1.com", "domain2.com", "domain3.com"],
-              "prosecutor_query": "",
-              "defender_query": ""
+              "prosecutor_query": "Query with supporting documents phrase",
+              "defender_query": "Query with supporting documents phrase"
             }}
           ]
         }}
-        
-        IMPORTANT:
-        - Leave prosecutor_query and defender_query as empty strings
-        - Focus on extracting claims and assigning proper categories/domains
-        - Max 5 claims total
         
         EXAMPLE OUTPUT:
         {{
@@ -613,20 +815,20 @@ def claim_decomposer_node(state: CourtroomState):
               "id": 1,
               "claim_text": "MMR vaccine is linked to autism in children",
               "topic_category": "Health/Medicine",
-              "trusted_domains": ["who.int", "cdc.gov", "nih.gov", "pubmed.ncbi.nlm.nih.gov"],
-              "prosecutor_query": "",
-              "defender_query": ""
+              "prosecutor_query": "MMR vaccine autism link AND (false OR debunked OR myth OR disproven) AND (supporting documents OR supporting texts OR supporting evidence OR research papers)",
+              "defender_query": "MMR vaccine autism link AND (proven OR confirmed OR verified OR true) AND (supporting documents OR supporting texts OR supporting evidence OR research papers)"
             }},
             {{
               "id": 2,
               "claim_text": "Andrew Wakefield's 1998 study proved vaccine-autism connection",
               "topic_category": "Health/Medicine",
-              "trusted_domains": ["thelancet.com", "bmj.com", "pubmed.ncbi.nlm.nih.gov"],
-              "prosecutor_query": "",
-              "defender_query": ""
+              "prosecutor_query": "Wakefield 1998 vaccine autism study AND (retracted OR false OR fraud OR debunked) AND (supporting documents OR supporting texts OR supporting evidence)",
+              "defender_query": "Wakefield 1998 vaccine autism study AND (proven OR confirmed OR verified) AND (supporting documents OR supporting texts OR supporting evidence)"
             }}
           ]
         }}
+        
+        REMEMBER: ALWAYS include "supporting documents OR supporting texts OR supporting evidence" in BOTH queries!
         """
         
         data = safe_invoke_json(llm_analysis, prompt, DecomposedClaims)
@@ -639,29 +841,9 @@ def claim_decomposer_node(state: CourtroomState):
         print(f"    Implication: {decomposed_data.implication}")
         print(f"    Claims Extracted: {len(decomposed_data.claims)}")
         
-        # Generate search queries in Python (deterministic, no API call)
-        print("\nGENERATING SEARCH QUERIES (Python - No API Call)...")
         for claim in decomposed_data.claims:
-            # Extract key terms from claim (simple keyword extraction)
-            claim_words = claim.claim_text.split()
-            
-            # Remove common stop words and keep important terms
-            stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'not'}
-            keywords = [w for w in claim_words if w.lower() not in stop_words][:7]
-            base_query = ' '.join(keywords)
-            
-            # Remove negations that might flip the search
-            base_query = base_query.replace(' not ', ' ').replace(' NOT ', ' ').strip()
-            
-            # Build prosecutor query (find contradicting evidence)
-            claim.prosecutor_query = f"{base_query} false debunked myth contradicts evidence court ruling disproved statistics"
-            
-            # Build defender query (find supporting evidence)
-            claim.defender_query = f"{base_query} confirmed verified proven true evidence court ruling expert testimony study data"
-            
             print(f"\n      [{claim.id}] {claim.claim_text}")
             print(f"           Category: {claim.topic_category}")
-            print(f"           Trusted: {', '.join(claim.trusted_domains[:3])}")
             print(f"           Prosecutor: {claim.prosecutor_query}")
             print(f"           Defender: {claim.defender_query}")
 
@@ -680,54 +862,51 @@ def claim_decomposer_node(state: CourtroomState):
                 id=1,
                 claim_text=transcript[:100],
                 topic_category="General",
-                trusted_domains=["wikipedia.org", "reuters.com", "apnews.com"],
-                prosecutor_query=build_prosecutor_query(transcript[:100]),
-                defender_query=build_defender_query(transcript[:100])
+                prosecutor_query=f"{transcript[:50]} AND (false OR debunked) AND (supporting documents OR supporting texts)",
+                defender_query=f"{transcript[:50]} AND (proven OR confirmed) AND (supporting documents OR supporting texts)"
             )]
         )
         return {"decomposed_data": fallback}
 
-def investigator_and_judge_node(state: CourtroomState):
+def evidence_extraction_node(state: CourtroomState):
     """
-    PHASE 2: Search, Extract Evidence, Analyze Claims, Connect to Implication
-    TARGET: ≤5 API calls per claim + 1 final API call
+    PHASE 2: Search and Extract Evidence for ALL claims
+    
+    For each claim:
+    - Run prosecutor query -> top 2 results
+    - Run defender query -> top 2 results
+    - Extract 2 prosecutor facts + 2 defender facts
+    - Assign suggested trusted domains to each fact
+    
+    Target: 1 API call per claim (for extraction)
     """
-    print("\nINVESTIGATOR + JUDGE: Evidence Collection & Analysis...")
-    print(f"    TARGET: Max 5 API calls per claim + 1 final call")
+    print("\nEVIDENCE EXTRACTION: Searching and Extracting Facts...")
     
     decomposed = state.get('decomposed_data')
     if not decomposed:
         print("No claims to investigate. Skipping.")
-        return {"final_verdict": None}
+        return {"all_claim_evidence": []}
 
-    all_claim_analyses = []
-    total_claim_api_calls = 0
+    all_claim_evidence = []
+    extraction_api_calls = 0
 
-    # ==========================================
-    # Process Each Claim
-    # ==========================================
-    
     for claim in decomposed.claims:
-        claim_start_calls = api_call_count
         print(f"\n   {'='*70}")
         print(f"    PROCESSING CLAIM #{claim.id}")
         print(f"   {'='*70}")
         print(f"   Claim: '{claim.claim_text}'")
         print(f"   Category: {claim.topic_category}")
-        print(f"   Trusted Domains: {', '.join(claim.trusted_domains)}")
         
-        # ==========================================
-        # STEP 1: Fire Web Searches (No API calls)
-        # ==========================================
-        
+        # 1. Web Search (No API calls)
         print(f"\n       STEP 1: Web Search (No API calls)")
         
         # Prosecutor Search
         print(f"       Prosecutor Query: {claim.prosecutor_query}")
         try:
-            raw_pros_results = search_web(claim.prosecutor_query, intent="prosecutor")
+            # Get 5 results, use top 2
+            raw_pros_results = search_web_with_count(claim.prosecutor_query, num_results=5, intent="prosecutor")
             prosecutor_results = raw_pros_results[:2] if raw_pros_results and isinstance(raw_pros_results, list) else []
-            print(f"          Retrieved {len(prosecutor_results)} prosecutor sources")
+            print(f"          Retrieved {len(prosecutor_results)} prosecutor sources (from {len(raw_pros_results)} total)")
         except Exception as e:
             print(f"          Prosecutor search failed: {e}")
             prosecutor_results = []
@@ -735,440 +914,975 @@ def investigator_and_judge_node(state: CourtroomState):
         # Defender Search
         print(f"       Defender Query: {claim.defender_query}")
         try:
-            raw_def_results = search_web(claim.defender_query, intent="defender")
+            # Get 5 results, use top 2
+            raw_def_results = search_web_with_count(claim.defender_query, num_results=5, intent="defender")
             defender_results = raw_def_results[:2] if raw_def_results and isinstance(raw_def_results, list) else []
-            print(f"          Retrieved {len(defender_results)} defender sources")
+            print(f"          Retrieved {len(defender_results)} defender sources (from {len(raw_def_results)} total)")
         except Exception as e:
             print(f"          Defender search failed: {e}")
             defender_results = []
         
-        # ==========================================
-        # STEP 2: Extract Prosecutor Evidence (1-2 API calls)
-        # ==========================================
+        # 2. Extract Evidence (1 API call)
+        print(f"\n       STEP 2: Extract Evidence with Suggested Domains")
         
-        prosecutor_facts = []
+        # Build combined evidence text
+        all_evidence_text = ""
         
         if prosecutor_results:
-            print(f"\n       STEP 2a: Extract Prosecutor Evidence")
-            
-            # Build evidence text from search results
-            pros_evidence_text = ""
+            all_evidence_text += "\n[PROSECUTOR SOURCES - Contradicting the claim]\n"
             for i, result in enumerate(prosecutor_results):
-                pros_evidence_text += f"\n[Source {i+1}]\n"
-                pros_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
-                pros_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
-                pros_evidence_text += f"Content: {result.get('snippet', '')[:800]}\n"
-                pros_evidence_text += "-" * 60 + "\n"
-            
-            extract_prompt = f"""
-            Extract the TOP 2 most powerful CONTRADICTING facts for this claim.
-            
-            CLAIM TO CONTRADICT: "{claim.claim_text}"
-            CLAIM CATEGORY: {claim.topic_category}
-            TRUSTED DOMAINS: {', '.join(claim.trusted_domains)}
-            
-            PROSECUTOR SOURCES (contradicting the claim):
-            {pros_evidence_text}
-            
-            EXTRACTION RULES:
-            1. Extract EXACTLY 2 facts (or fewer if insufficient evidence)
-            2. Each fact MUST contain SPECIFIC, CHECKABLE information:
-               - Numbers, percentages, statistics
-               - Dates, years, time periods
-               - Names of people, organizations, studies
-               - Citations to research, court cases, laws
-               - Direct quotes from authorities
-            
-            3. NO vague statements like:
-                "Experts disagree"
-                "Studies show"
-                "According to sources"
-            
-            4. ONLY concrete facts like:
-                "CDC study of 1.2M children found no MMR-autism link (JAMA, 2015)"
-                "Wakefield's 1998 paper retracted by The Lancet in 2010 for data fraud"
-                "Supreme Court ruling 2018/SC/1234 banned firecrackers in Delhi NCR"
-            
-            5. Assign trust_score:
-               - "High" if URL matches trusted domains OR is .gov/.edu/.org from reputable institution
-               - "Low" otherwise
-            
-            Return JSON array:
-            [
-              {{
-                "source_url": "https://...",
-                "key_fact": "Specific fact with numbers/dates/names/citations",
-                "trust_score": "High" | "Low"
-              }}
-            ]
-            
-            If no good evidence, return empty array: []
-            """
-            
-            prosecutor_facts_raw = safe_invoke_json_array(llm_analysis, extract_prompt, EvidencePoint)
-            
-            # Double-check trust scores against claim-specific trusted domains
-            for fact in prosecutor_facts_raw:
-                if isinstance(fact, dict):
-                    url = fact.get('source_url', '')
-                    if is_trusted_domain(url, claim.trusted_domains):
-                        fact['trust_score'] = "High"
-                    prosecutor_facts.append(fact)
-            
-            print(f"          Extracted {len(prosecutor_facts)} prosecutor facts")
-            for i, fact in enumerate(prosecutor_facts, 1):
-                fact_text = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
-                fact_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
-                print(f"         {i}. [{fact_trust}] {fact_text[:100]}...")
-        else:
-            print(f"\n       STEP 2a: No prosecutor sources found, skipping extraction")
-        
-        # ==========================================
-        # STEP 3: Extract Defender Evidence (1-2 API calls)
-        # ==========================================
-        
-        defender_facts = []
+                all_evidence_text += f"\nSource {i+1}:\n"
+                all_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
+                all_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
+                all_evidence_text += f"Content: {result.get('snippet', '')[:800]}\n"
+                all_evidence_text += "-" * 60 + "\n"
         
         if defender_results:
-            print(f"\n       STEP 2b: Extract Defender Evidence")
-            
-            # Build evidence text from search results
-            def_evidence_text = ""
+            all_evidence_text += "\n[DEFENDER SOURCES - Supporting the claim]\n"
             for i, result in enumerate(defender_results):
-                def_evidence_text += f"\n[Source {i+1}]\n"
-                def_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
-                def_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
-                def_evidence_text += f"Content: {result.get('snippet', '')[:800]}\n"
-                def_evidence_text += "-" * 60 + "\n"
-            
-            extract_prompt = f"""
-            Extract the TOP 2 most powerful SUPPORTING facts for this claim.
-            
-            CLAIM TO SUPPORT: "{claim.claim_text}"
-            CLAIM CATEGORY: {claim.topic_category}
-            TRUSTED DOMAINS: {', '.join(claim.trusted_domains)}
-            
-            DEFENDER SOURCES (supporting the claim):
-            {def_evidence_text}
-            
-            EXTRACTION RULES:
-            1. Extract EXACTLY 2 facts (or fewer if insufficient evidence)
-            2. Each fact MUST contain SPECIFIC, CHECKABLE information:
-               - Numbers, percentages, statistics
-               - Dates, years, time periods
-               - Names of people, organizations, studies
-               - Citations to research, court cases, laws, scriptures
-               - Direct quotes from authorities
-            
-            3. NO vague statements like:
-                "Ancient texts mention this"
-                "It's traditional"
-                "Many believe"
-            
-            4. ONLY concrete facts like:
-                "Skanda Purana (Chapter 5, Verse 12) describes 'akash deepa' ritual"
-                "Archaeological evidence from 1200 BCE shows firecracker-like devices (ASI Report 2010)"
-                "85% of respondents in 2019 survey practiced this tradition (Pew Research)"
-            
-            5. Assign trust_score:
-               - "High" if URL matches trusted domains OR is .gov/.edu/.org from reputable institution
-               - "Low" otherwise
-            
-            Return JSON array:
-            [
-              {{
-                "source_url": "https://...",
-                "key_fact": "Specific fact with numbers/dates/names/citations",
-                "trust_score": "High" | "Low"
-              }}
-            ]
-            
-            If no good evidence, return empty array: []
-            """
-            
-            defender_facts_raw = safe_invoke_json_array(llm_analysis, extract_prompt, EvidencePoint)
-            
-            # Double-check trust scores
-            for fact in defender_facts_raw:
-                if isinstance(fact, dict):
-                    url = fact.get('source_url', '')
-                    if is_trusted_domain(url, claim.trusted_domains):
-                        fact['trust_score'] = "High"
-                    defender_facts.append(fact)
-            
-            print(f"          Extracted {len(defender_facts)} defender facts")
-            for i, fact in enumerate(defender_facts, 1):
-                fact_text = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
-                fact_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
-                print(f"         {i}. [{fact_trust}] {fact_text[:100]}...")
-        else:
-            print(f"\n       STEP 2b: No defender sources found, skipping extraction")
+                all_evidence_text += f"\nSource {i+1}:\n"
+                all_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
+                all_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
+                all_evidence_text += f"Content: {result.get('snippet', '')[:800]}\n"
+                all_evidence_text += "-" * 60 + "\n"
         
-        # ==========================================
-        # STEP 4: Fact-Check with Google API (if available)
-        # ==========================================
+        if not all_evidence_text:
+            print(f"          No evidence found for this claim")
+            all_claim_evidence.append(ClaimEvidence(
+                claim_id=claim.id,
+                prosecutor_facts=[],
+                defender_facts=[]
+            ))
+            continue
         
-        print(f"\n       STEP 3: Fact-Checking")
-        fact_check_result = check_google_fact_check_tool(claim.claim_text)
-        if "MATCH:" in fact_check_result:
-            print(f"          Google Fact Check: {fact_check_result}")
-        else:
-            print(f"          Google Fact Check: {fact_check_result}")
+        # Single API call to extract all evidence
+        extract_prompt = f"""
+        Extract evidence from search results for fact-checking.
         
-        # Optionally run consensus check for unclear cases
-        consensus_result = ""
-        if len(prosecutor_facts) == 0 and len(defender_facts) == 0:
-            print(f"          Running Consensus Check (no direct evidence found)...")
-            consensus_result = consensus_search_tool(claim.claim_text)
-            print(f"          Consensus check complete")
-        
-        # ==========================================
-        # STEP 5: AI Analysis & Verdict (1 API call)
-        # ==========================================
-        
-        print(f"\n       STEP 4: Writing Detailed Analysis")
-        
-        # Prepare evidence summaries
-        prosecutor_summary = json.dumps([
-            {
-                'url': (f.get('source_url') if isinstance(f, dict) else f.source_url),
-                'fact': (f.get('key_fact') if isinstance(f, dict) else f.key_fact),
-                'trust': (f.get('trust_score') if isinstance(f, dict) else f.trust_score)
-            }
-            for f in prosecutor_facts
-        ], indent=2)
-        
-        defender_summary = json.dumps([
-            {
-                'url': (f.get('source_url') if isinstance(f, dict) else f.source_url),
-                'fact': (f.get('key_fact') if isinstance(f, dict) else f.key_fact),
-                'trust': (f.get('trust_score') if isinstance(f, dict) else f.trust_score)
-            }
-            for f in defender_facts
-        ], indent=2)
-        
-        analysis_prompt = f"""
-        You are a Supreme Court Judge analyzing evidence for a fact-checking verdict.
-        
-        CLAIM UNDER REVIEW:
-        "{claim.claim_text}"
-        
+        CLAIM TO ANALYZE: "{claim.claim_text}"
         CLAIM CATEGORY: {claim.topic_category}
-        TRUSTED SOURCES: {', '.join(claim.trusted_domains)}
         
-        PROSECUTOR EVIDENCE (Contradicting the claim):
-        {prosecutor_summary}
+        SEARCH RESULTS:
+        {all_evidence_text}
         
-        DEFENDER EVIDENCE (Supporting the claim):
-        {defender_summary}
+        EXTRACTION RULES:
+        1. Extract EXACTLY 2 PROSECUTOR facts (contradicting the claim) from prosecutor sources
+        2. Extract EXACTLY 2 DEFENDER facts (supporting the claim) from defender sources
+        3. Each fact MUST contain SPECIFIC, CHECKABLE information:
+           - Numbers, percentages, statistics
+           - Dates, years, time periods
+           - Names of people, organizations, studies
+           - Citations to research, court cases, laws, scriptures
+           - Direct quotes from authorities
         
-        FACT-CHECK RESULT:
-        {fact_check_result}
+        4. NO OVERLAP between facts - each fact must be unique and information-rich
+        5. NO vague statements like:
+            "Experts disagree"
+            "Studies show"
+            "According to sources"
+            "It is believed"
         
-        {"CONSENSUS ANALYSIS:" + consensus_result if consensus_result else ""}
+        6. ONLY concrete facts like:
+            "CDC study of 1.2M children found no MMR-autism link (JAMA, 2015)"
+            "Wakefield's 1998 paper retracted by The Lancet in 2010 for data fraud"
+            "Supreme Court ruling 2018/SC/1234 banned firecrackers in Delhi NCR"
+            "Skanda Purana (Chapter 5, Verse 12) describes 'akash deepa' ritual"
+            "Archaeological Survey of India Report 2010 shows no firecracker evidence before 1400 CE"
         
-        YOUR TASK:
-        1. Determine the claim status: "Verified", "Debunked", or "Unclear"
+        7. For EACH fact, suggest 3-5 trusted domains for verification based on the claim category:
+           - Science/Technology: nature.com, science.org, arxiv.org, ieee.org, nasa.gov
+           - Law/Policy (India): indiankanoon.org, supremecourtofindia.nic.in, livelaw.in, barandbench.com
+           - Law/Policy (Global): justia.com, law.cornell.edu, oecd.org, un.org
+           - Politics/Geopolitics: mea.gov.in, un.org, cfr.org, brookings.edu, bbc.com
+           - Mythology/Religion: sacred-texts.com, britannica.com, jstor.org, vedicheritage.gov.in, oxfordreference.com
+           - History/Culture: britannica.com, jstor.org, asi.nic.in, nationalarchives.gov.in, oxfordreference.com
+           - Health/Medicine: who.int, cdc.gov, nih.gov, pubmed.ncbi.nlm.nih.gov, mayoclinic.org
+           - Environment/Climate: ipcc.ch, noaa.gov, epa.gov, climate.nasa.gov, nature.com
+           - News/Viral: reuters.com, apnews.com, bbc.com, thehindu.com, altnews.in, snopes.com
+           - General: britannica.com, wikipedia.org, reuters.com, bbc.com, snopes.com
         
-        2. Write a DETAILED PARAGRAPH (150-250 words) that:
-           - States your verdict clearly in the opening sentence
-           - Explains the reasoning behind your verdict
-           - References SPECIFIC evidence from both prosecutor and defender sides
-           - Compares the quality and credibility of sources
-           - Addresses why one side is stronger (or if balanced, why it's unclear)
-           - Mentions trust scores and source credibility
-           - Includes specific facts, numbers, dates, citations from the evidence
-           - Makes the reasoning crystal clear so readers don't need to read individual evidence
-        
-        VERDICT GUIDELINES:
-        - "Verified" if defender evidence is stronger, from trusted sources, with specifics
-        - "Debunked" if prosecutor evidence is stronger, from trusted sources, with specifics
-        - "Unclear" if:
-          * Both sides have equally strong evidence
-          * Evidence is insufficient or low-quality on both sides
-          * Sources contradict each other with similar credibility
-        
-        WRITING STYLE:
-        - Professional, balanced, objective
-        - Reference specific evidence: "According to [Source], [specific fact]..."
-        - Compare evidence: "While defenders cite [X], prosecutors counter with [Y]..."
-        - Explain source credibility: "The CDC (high-trust source) contradicts..."
+        8. If insufficient evidence exists (less than 2 facts per side), extract what's available
         
         OUTPUT FORMAT:
-        Return JSON object:
+        Return a JSON object:
         {{
           "claim_id": {claim.id},
-          "claim_text": "{claim.claim_text}",
-          "status": "Verified" | "Debunked" | "Unclear",
-          "detailed_paragraph": "Your 150-250 word analysis here...",
-          "prosecutor_evidence": {prosecutor_summary},
-          "defender_evidence": {defender_summary}
+          "prosecutor_facts": [
+            {{
+              "source_url": "https://...",
+              "key_fact": "Specific fact with numbers/dates/names/citations",
+              "side": "prosecutor",
+              "suggested_trusted_domains": ["domain1.com", "domain2.com", "domain3.com"]
+            }}
+          ],
+          "defender_facts": [
+            {{
+              "source_url": "https://...",
+              "key_fact": "Specific fact with numbers/dates/names/citations",
+              "side": "defender",
+              "suggested_trusted_domains": ["domain1.com", "domain2.com", "domain3.com"]
+            }}
+          ]
         }}
         
-        EXAMPLE PARAGRAPH:
-        "The claim that the MMR vaccine causes autism is DEBUNKED based on overwhelming scientific evidence. The CDC's comprehensive study of 1.2 million children (JAMA, 2015) found absolutely no causal link between MMR vaccination and autism spectrum disorder. This high-trust source is corroborated by systematic reviews from the WHO and multiple peer-reviewed meta-analyses. While defenders cite Andrew Wakefield's 1998 study, this research was formally retracted by The Lancet in 2010 after investigations revealed data fraud and ethical violations. Wakefield subsequently lost his medical license. The prosecutor evidence is not only more recent but comes from the world's leading health organizations, whereas the defender's primary source has been thoroughly discredited. The scientific consensus, based on decades of research involving millions of participants, definitively contradicts this claim."
+        CRITICAL: Each fact must be NON-OVERLAPPING and INFORMATION-RICH. No general claims allowed.
         """
         
-        analysis_data = safe_invoke_json(llm_analysis, analysis_prompt, ClaimAnalysis)
+        evidence_data = safe_invoke_json(llm_analysis, extract_prompt, ClaimEvidence)
         
-        if analysis_data:
-            # Ensure evidence lists are properly included
-            if not analysis_data.get('prosecutor_evidence'):
-                analysis_data['prosecutor_evidence'] = prosecutor_facts
-            if not analysis_data.get('defender_evidence'):
-                analysis_data['defender_evidence'] = defender_facts
+        if evidence_data:
+            claim_evidence = ClaimEvidence(**evidence_data)
+            all_claim_evidence.append(claim_evidence)
             
-            analysis = ClaimAnalysis(**analysis_data)
-            all_claim_analyses.append(analysis)
+            extraction_api_calls += 1
             
-            claim_end_calls = api_call_count
-            claim_api_calls = claim_end_calls - claim_start_calls
-            total_claim_api_calls += claim_api_calls
+            print(f"          Extracted {len(claim_evidence.prosecutor_facts)} prosecutor facts")
+            for i, fact in enumerate(claim_evidence.prosecutor_facts, 1):
+                fact_obj = fact if isinstance(fact, dict) else fact
+                fact_text = fact_obj.get('key_fact') if isinstance(fact_obj, dict) else fact_obj.key_fact
+                print(f"             {i}. {fact_text[:100]}...")
             
-            print(f"          Analysis Complete")
-            print(f"          Verdict: {analysis.status}")
-            print(f"          API Calls for this claim: {claim_api_calls}")
-            print(f"          Paragraph length: {len(analysis.detailed_paragraph)} chars")
+            print(f"          Extracted {len(claim_evidence.defender_facts)} defender facts")
+            for i, fact in enumerate(claim_evidence.defender_facts, 1):
+                fact_obj = fact if isinstance(fact, dict) else fact
+                fact_text = fact_obj.get('key_fact') if isinstance(fact_obj, dict) else fact_obj.key_fact
+                print(f"             {i}. {fact_text[:100]}...")
         else:
-            print(f"          Analysis generation failed for claim {claim.id}")
-            # Create fallback analysis
-            fallback_analysis = ClaimAnalysis(
+            print(f"          Evidence extraction failed for claim {claim.id}")
+            all_claim_evidence.append(ClaimEvidence(
                 claim_id=claim.id,
-                claim_text=claim.claim_text,
-                status="Unclear",
-                detailed_paragraph=f"Unable to reach a verdict for this claim due to insufficient evidence or analysis errors. The claim '{claim.claim_text}' requires further investigation.",
-                prosecutor_evidence=prosecutor_facts[:2],
-                defender_evidence=defender_facts[:2]
-            )
-            all_claim_analyses.append(fallback_analysis)
-    
+                prosecutor_facts=[],
+                defender_facts=[]
+            ))
+
     print(f"\n   {'='*70}")
-    print(f"    ALL CLAIMS PROCESSED")
+    print(f"    EVIDENCE EXTRACTION COMPLETE")
     print(f"   {'='*70}")
-    print(f"   Total API calls for all claims: {total_claim_api_calls}")
-    print(f"   Average per claim: {total_claim_api_calls / len(decomposed.claims):.1f}")
+    print(f"   Total API calls for extraction: {extraction_api_calls}")
+
+    return {"all_claim_evidence": all_claim_evidence}
+def analyze_consensus_batch(evidence_list: list, search_results_map: dict) -> dict:
+    """
+    Batch analyze multiple evidence items using Gemini to determine consensus.
+    Uses alternating API keys for load balancing.
     
-    # ==========================================
-    # FINAL STEP: Connect Everything to Implication (1 API call)
-    # ==========================================
+    Args:
+        evidence_list: List of dicts with {claim_id, evidence_id, fact_text, side}
+        search_results_map: Dict mapping evidence_id to search results
     
-    print(f"\n    FINAL STEP: Writing Implication Connection...")
+    Returns:
+        Dict mapping evidence_id to consensus analysis
+    """
+    if not evidence_list:
+        return {}
     
-    # Build comprehensive summary of all claim analyses
-    claims_summary = ""
-    for i, analysis in enumerate(all_claim_analyses, 1):
-        a_status = analysis.status if hasattr(analysis, 'status') else analysis.get('status')
-        a_text = analysis.claim_text if hasattr(analysis, 'claim_text') else analysis.get('claim_text')
-        a_para = analysis.detailed_paragraph if hasattr(analysis, 'detailed_paragraph') else analysis.get('detailed_paragraph')
+    # Build structured input for Gemini
+    batch_input = ""
+    for i, evidence in enumerate(evidence_list, 1):
+        evidence_id = evidence['evidence_id']
+        fact_text = evidence['fact_text']
+        side = evidence['side']
         
-        claims_summary += f"\n{'='*60}\n"
-        claims_summary += f"CLAIM #{i}: {a_text}\n"
-        claims_summary += f"STATUS: {a_status}\n"
-        claims_summary += f"ANALYSIS:\n{a_para}\n"
+        batch_input += f"\n{'='*70}\n"
+        batch_input += f"EVIDENCE #{i} (ID: {evidence_id}, Side: {side})\n"
+        batch_input += f"{'='*70}\n"
+        batch_input += f"FACT TO VERIFY: {fact_text}\n\n"
+        
+        # Add search results
+        search_results = search_results_map.get(evidence_id, [])
+        if search_results:
+            batch_input += f"SEARCH RESULTS ({len(search_results)} sources):\n"
+            for j, result in enumerate(search_results, 1):
+                batch_input += f"\n--- SOURCE {j} ---\n"
+                batch_input += f"Title: {result.get('title', 'Untitled')}\n"
+                batch_input += f"URL: {result.get('url', 'unknown')}\n"
+                batch_input += f"Content: {result.get('snippet', '')[:400]}\n"
+        else:
+            batch_input += "SEARCH RESULTS: None available\n"
+        
+        batch_input += "\n"
     
-    final_prompt = f"""
-    You are the Supreme Court Chief Justice delivering the FINAL VERDICT.
+    prompt = f"""
+    Analyze web consensus for MULTIPLE evidence items in a BATCH.
     
-    CORE IMPLICATION UNDER REVIEW:
-    "{decomposed.implication}"
+    You will receive {len(evidence_list)} different evidence items, each with its own search results.
+    For EACH evidence item, determine if the search results support or contradict it.
     
-    INDIVIDUAL CLAIM VERDICTS:
-    {claims_summary}
+    {batch_input}
     
     YOUR TASK:
-    1. Determine OVERALL VERDICT:
-       - "True" if implication is supported by verified claims
-       - "False" if implication is contradicted by debunked claims
-       - "Partially True" if some claims verified, others debunked (selective facts)
-       - "Unverified" if most claims are unclear or insufficient evidence
+    For EACH evidence item above, analyze its search results and determine:
     
-    2. Write a LONG DETAILED PARAGRAPH (200-300 words) that:
-       - Opens with clear statement of overall verdict
-       - Explains HOW the implication relates to individual claims
-       - Connects the dots between verified/debunked/unclear claims
-       - Addresses SELECTIVE USE OF FACTS if applicable (e.g., "While claim X is true, it doesn't support the broader implication because...")
-       - Explains what the evidence collectively reveals about the implication
+    1. **supports**: Number of sources that SUPPORT the fact (agree, confirm, provide evidence for)
+    2. **contradicts**: Number of sources that CONTRADICT the fact (disagree, debunk, provide evidence against)
+    3. **neutral**: Number of sources that are NEUTRAL (unclear, ambiguous, or irrelevant)
+    4. **confidence**: Overall confidence level:
+       - "High" if 70%+ of sources agree (support OR contradict)
+       - "Medium" if 50-69% agree
+       - "Low" if <50% agree or conflicting results
+    5. **reasoning**: Brief 2-3 sentence explanation
+    
+    IMPORTANT CONTEXT:
+    - "Prosecutor" evidence = facts that CONTRADICT the original claim
+    - "Defender" evidence = facts that SUPPORT the original claim
+    
+    For Prosecutor evidence:
+    - If search results CONTRADICT the original claim → they SUPPORT this evidence
+    - If search results SUPPORT the original claim → they CONTRADICT this evidence
+    
+    For Defender evidence:
+    - If search results SUPPORT the original claim → they SUPPORT this evidence
+    - If search results CONTRADICT the original claim → they CONTRADICT this evidence
+    
+    OUTPUT FORMAT (JSON):
+    Return an array where each element corresponds to one evidence item:
+    
+    [
+      {{
+        "evidence_id": "evidence_1",
+        "supports": <number>,
+        "contradicts": <number>,
+        "neutral": <number>,
+        "confidence": "High" | "Medium" | "Low",
+        "reasoning": "Brief explanation"
+      }},
+      {{
+        "evidence_id": "evidence_2",
+        ...
+      }}
+    ]
+    
+    CRITICAL:
+    - Return exactly {len(evidence_list)} analysis objects
+    - Each analysis must have the correct evidence_id
+    - Numbers must add up to the total number of search results for that evidence
+    - Be strict - only count CLEAR support/contradiction
+    """
+    
+    class SingleConsensusAnalysis(BaseModel):
+        evidence_id: str
+        supports: int
+        contradicts: int
+        neutral: int
+        confidence: Literal["High", "Medium", "Low"]
+        reasoning: str
+    
+    # Use llm_search for consensus analysis
+    analyses = safe_invoke_json_array(llm_search, prompt, SingleConsensusAnalysis)
+    
+    if not analyses:
+        # Fallback: return empty analysis for each evidence
+        return {
+            ev['evidence_id']: {
+                "supports": 0,
+                "contradicts": 0,
+                "neutral": len(search_results_map.get(ev['evidence_id'], [])),
+                "confidence": "Low",
+                "reasoning": "Failed to analyze consensus"
+            }
+            for ev in evidence_list
+        }
+    
+    # Convert list to dict mapping evidence_id to analysis
+    return {
+        analysis['evidence_id']: {
+            "supports": analysis['supports'],
+            "contradicts": analysis['contradicts'],
+            "neutral": analysis['neutral'],
+            "confidence": analysis['confidence'],
+            "reasoning": analysis['reasoning']
+        }
+        for analysis in analyses
+    }
+
+
+def three_tier_fact_check_node_batched(state: CourtroomState):
+    """
+    PHASE 3: Three-Tier Fact-Checking with BATCHED Tier 3 Consensus
+    
+    Improvements:
+    - Batch consensus checks in groups of 4
+    - Alternate between API keys for load balancing
+    - Reduce API calls from N to N/4 for Tier 3
+    """
+    print("\nTHREE-TIER FACT-CHECKING (BATCHED): Verifying All Evidence...")
+
+    all_claim_evidence = state.get('all_claim_evidence')
+    if not all_claim_evidence:
+        print("No evidence to verify. Skipping.")
+        return {}
+
+    verified_claims = []
+    
+    # Collect all evidence that needs Tier 3 consensus check
+    tier3_queue = []  # Will store: {evidence_id, claim_id, fact, url, side, suggested_domains}
+    tier3_search_results = {}  # Will store search results for each evidence_id
+    
+    evidence_id_counter = 0
+
+    # PASS 1: Tier 1 & 2 checks, queue Tier 3 items
+    for claim_evidence in all_claim_evidence:
+        claim_id = claim_evidence.claim_id if hasattr(claim_evidence, 'claim_id') else claim_evidence.get('claim_id')
+        print(f"\n   {'='*70}")
+        print(f"    PROCESSING CLAIM #{claim_id} - TIER 1 & 2")
+        print(f"   {'='*70}")
+        
+        verified_prosecutor = []
+        verified_defender = []
+        
+        # Process both prosecutor and defender facts
+        for side_name, facts_list in [
+            ('prosecutor', claim_evidence.prosecutor_facts if hasattr(claim_evidence, 'prosecutor_facts') else claim_evidence.get('prosecutor_facts', [])),
+            ('defender', claim_evidence.defender_facts if hasattr(claim_evidence, 'defender_facts') else claim_evidence.get('defender_facts', []))
+        ]:
+            verified_list = verified_prosecutor if side_name == 'prosecutor' else verified_defender
+            
+            for fact in facts_list:
+                fact_obj = fact if isinstance(fact, dict) else fact
+                source_url = fact_obj.get('source_url') if isinstance(fact_obj, dict) else fact_obj.source_url
+                key_fact = fact_obj.get('key_fact') if isinstance(fact_obj, dict) else fact_obj.key_fact
+                suggested_domains = fact_obj.get('suggested_trusted_domains') if isinstance(fact_obj, dict) else fact_obj.suggested_trusted_domains
+                
+                print(f"\n       Verifying {side_name.title()} Fact: {key_fact[:60]}...")
+                
+                # TIER 1: Google Fact Check API
+                tier1_result = check_google_fact_check_tool(key_fact)
+                
+                if "MATCH:" in tier1_result:
+                    print(f"          ✓ TIER 1 VERIFIED")
+                    verified_list.append(VerifiedEvidence(
+                        source_url=source_url,
+                        key_fact=key_fact,
+                        side=side_name,
+                        trust_score="High",
+                        verification_method="Tier1-FactCheck",
+                        verification_details=tier1_result
+                    ))
+                    continue
+                
+                # TIER 2: Domain Trust Check
+                domain_trust = get_domain_trust_level(source_url)
+                is_suggested = is_trusted_domain(source_url, suggested_domains)
+                
+                if domain_trust == "High" or is_suggested:
+                    tier2_details = f"Domain Trust: {domain_trust}, Matches Suggested: {is_suggested}"
+                    print(f"          ✓ TIER 2 VERIFIED: {tier2_details}")
+                    verified_list.append(VerifiedEvidence(
+                        source_url=source_url,
+                        key_fact=key_fact,
+                        side=side_name,
+                        trust_score=domain_trust,
+                        verification_method="Tier2-Domain",
+                        verification_details=tier2_details
+                    ))
+                    continue
+                
+                # TIER 3: Queue for batch consensus check
+                evidence_id_counter += 1
+                evidence_id = f"ev_{claim_id}_{side_name}_{evidence_id_counter}"
+                
+                print(f"          → Queued for TIER 3 (Batch ID: {evidence_id})")
+                
+                # Run search now, store results for later batch analysis
+                consensus_data = consensus_search_tool(key_fact[:100])
+                
+                if consensus_data.get("success"):
+                    tier3_queue.append({
+                        'evidence_id': evidence_id,
+                        'claim_id': claim_id,
+                        'fact_text': key_fact,
+                        'source_url': source_url,
+                        'side': side_name,
+                        'suggested_domains': suggested_domains
+                    })
+                    tier3_search_results[evidence_id] = consensus_data.get("results", [])
+                else:
+                    # Search failed - mark as unverified immediately
+                    verified_list.append(VerifiedEvidence(
+                        source_url=source_url,
+                        key_fact=key_fact,
+                        side=side_name,
+                        trust_score="Low",
+                        verification_method="Unverified",
+                        verification_details="Consensus search failed"
+                    ))
+        
+        # Store intermediate results (will be updated after batch consensus)
+        verified_claims.append({
+            'claim_id': claim_id,
+            'verified_prosecutor': verified_prosecutor,
+            'verified_defender': verified_defender
+        })
+    
+    # PASS 2: Batch process Tier 3 consensus checks
+    if tier3_queue:
+        print(f"\n   {'='*70}")
+        print(f"    TIER 3 BATCH CONSENSUS CHECK")
+        print(f"   {'='*70}")
+        print(f"    Total evidence items queued: {len(tier3_queue)}")
+        
+        batch_size = 4
+        num_batches = (len(tier3_queue) + batch_size - 1) // batch_size
+        print(f"    Processing in {num_batches} batches of up to {batch_size} items each")
+        
+        all_consensus_results = {}
+        
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, len(tier3_queue))
+            batch = tier3_queue[start_idx:end_idx]
+            
+            print(f"\n       Processing Batch {batch_idx + 1}/{num_batches} ({len(batch)} items)...")
+            
+            # Batch analyze
+            batch_results = analyze_consensus_batch(batch, tier3_search_results)
+            all_consensus_results.update(batch_results)
+            
+            print(f"          ✓ Batch {batch_idx + 1} complete")
+        
+        # PASS 3: Update verified_claims with Tier 3 results
+        print(f"\n       Applying Tier 3 results to claims...")
+        
+        for tier3_item in tier3_queue:
+            evidence_id = tier3_item['evidence_id']
+            claim_id = tier3_item['claim_id']
+            side = tier3_item['side']
+            
+            consensus_analysis = all_consensus_results.get(evidence_id)
+            
+            if not consensus_analysis:
+                consensus_analysis = {
+                    "supports": 0,
+                    "contradicts": 0,
+                    "neutral": 0,
+                    "confidence": "Low",
+                    "reasoning": "Batch analysis failed"
+                }
+            
+            # Find the claim in verified_claims
+            for verified_claim in verified_claims:
+                if verified_claim['claim_id'] == claim_id:
+                    # Determine trust score based on consensus
+                    supports = consensus_analysis['supports']
+                    contradicts = consensus_analysis['contradicts']
+                    confidence = consensus_analysis['confidence']
+                    reasoning = consensus_analysis['reasoning']
+                    
+                    # Logic depends on side (prosecutor vs defender)
+                    if side == 'prosecutor':
+                        # Prosecutor evidence contradicts the claim
+                        # So if consensus contradicts claim → supports prosecutor
+                        if contradicts > supports:
+                            trust_score = confidence
+                            details = f"Consensus: {contradicts} contradict claim. {reasoning}"
+                        elif supports > contradicts:
+                            trust_score = "Low"
+                            details = f"Consensus AGAINST prosecutor: {supports} support claim. {reasoning}"
+                        else:
+                            trust_score = "Low"
+                            details = f"No clear consensus. {reasoning}"
+                    else:  # defender
+                        # Defender evidence supports the claim
+                        # So if consensus supports claim → supports defender
+                        if supports > contradicts:
+                            trust_score = confidence
+                            details = f"Consensus: {supports} support claim. {reasoning}"
+                        elif contradicts > supports:
+                            trust_score = "Low"
+                            details = f"Consensus AGAINST defender: {contradicts} contradict claim. {reasoning}"
+                        else:
+                            trust_score = "Low"
+                            details = f"No clear consensus. {reasoning}"
+                    
+                    # Create verified evidence object
+                    verified_evidence = VerifiedEvidence(
+                        source_url=tier3_item['source_url'],
+                        key_fact=tier3_item['fact_text'],
+                        side=side,
+                        trust_score=trust_score,
+                        verification_method="Tier3-Consensus-Batch",
+                        verification_details=details
+                    )
+                    
+                    # Add to appropriate list
+                    if side == 'prosecutor':
+                        verified_claim['verified_prosecutor'].append(verified_evidence)
+                    else:
+                        verified_claim['verified_defender'].append(verified_evidence)
+                    
+                    break
+        
+        print(f"\n   {'='*70}")
+        print(f"    TIER 3 BATCH PROCESSING COMPLETE")
+        print(f"   {'='*70}")
+        print(f"    API calls saved: {len(tier3_queue) - num_batches}")
+        print(f"    (Would have been {len(tier3_queue)} calls, now only {num_batches} calls)")
+
+    print(f"\n   {'='*70}")
+    print(f"    FACT-CHECKING COMPLETE")
+    print(f"   {'='*70}")
+
+    return {'verified_evidence': verified_claims}
+
+def three_tier_fact_check_node(state: CourtroomState):
+    """
+    PHASE 3: Three-Tier Fact-Checking on ALL Evidence
+    For each evidence item:
+    - Tier 1: Google Fact Check API
+    - Tier 2: Universal Domain Trust Check
+    - Tier 3: Consensus Check (10 websites)
+
+    Returns verified evidence with trust scores
+    """
+    print("\nTHREE-TIER FACT-CHECKING: Verifying All Evidence...")
+
+    all_claim_evidence = state.get('all_claim_evidence')
+    if not all_claim_evidence:
+        print("No evidence to verify. Skipping.")
+        return {}
+
+    verified_claims = []
+
+    for claim_evidence in all_claim_evidence:
+        claim_id = claim_evidence.claim_id if hasattr(claim_evidence, 'claim_id') else claim_evidence.get('claim_id')
+        print(f"\n   {'='*70}")
+        print(f"    FACT-CHECKING CLAIM #{claim_id}")
+        print(f"   {'='*70}")
+        
+        verified_prosecutor = []
+        verified_defender = []
+        
+        # Process prosecutor facts
+        prosecutor_facts = claim_evidence.prosecutor_facts if hasattr(claim_evidence, 'prosecutor_facts') else claim_evidence.get('prosecutor_facts', [])
+        
+        for fact in prosecutor_facts:
+            fact_obj = fact if isinstance(fact, dict) else fact
+            source_url = fact_obj.get('source_url') if isinstance(fact_obj, dict) else fact_obj.source_url
+            key_fact = fact_obj.get('key_fact') if isinstance(fact_obj, dict) else fact_obj.key_fact
+            suggested_domains = fact_obj.get('suggested_trusted_domains') if isinstance(fact_obj, dict) else fact_obj.suggested_trusted_domains
+            
+            print(f"\n       Verifying Prosecutor Fact: {key_fact[:80]}...")
+            
+            # TIER 1: Google Fact Check API
+            tier1_result = check_google_fact_check_tool(key_fact)
+            
+            if "MATCH:" in tier1_result:
+                print(f"          TIER 1 VERIFIED: {tier1_result}")
+                verified_prosecutor.append(VerifiedEvidence(
+                    source_url=source_url,
+                    key_fact=key_fact,
+                    side="prosecutor",
+                    trust_score="High",
+                    verification_method="Tier1-FactCheck",
+                    verification_details=tier1_result
+                ))
+                continue
+            
+            # TIER 2: Universal Domain Trust Check
+            domain_trust = get_domain_trust_level(source_url)
+            is_suggested = is_trusted_domain(source_url, suggested_domains)
+            
+            if domain_trust == "High" or is_suggested:
+                tier2_details = f"Domain Trust: {domain_trust}, Matches Suggested: {is_suggested}"
+                print(f"          TIER 2 VERIFIED: {tier2_details}")
+                verified_prosecutor.append(VerifiedEvidence(
+                    source_url=source_url,
+                    key_fact=key_fact,
+                    side="prosecutor",
+                    trust_score=domain_trust,
+                    verification_method="Tier2-Domain",
+                    verification_details=tier2_details
+                ))
+                continue
+            
+            # TIER 3: Consensus Check (NOW USES GEMINI!)
+            print(f"          Running TIER 3 Consensus Check...")
+            consensus_data = consensus_search_tool(key_fact[:100])
+            
+            if consensus_data.get("success"):
+                # Analyze consensus using Gemini API
+                consensus_analysis = analyze_consensus_with_gemini(
+                    key_fact,
+                    consensus_data.get("results", [])
+                )
+                
+                supports = consensus_analysis.get("supports", 0)
+                contradicts = consensus_analysis.get("contradicts", 0)
+                confidence = consensus_analysis.get("confidence", "Low")
+                reasoning = consensus_analysis.get("reasoning", "No reasoning provided")
+                
+                print(f"          TIER 3 CONSENSUS: {supports} support, {contradicts} contradict")
+                print(f"          Confidence: {confidence}")
+                
+                # Determine trust score based on consensus
+                # For PROSECUTOR facts (contradicting the claim):
+                # - If sources CONTRADICT the original claim = they SUPPORT the prosecutor
+                # - If sources SUPPORT the original claim = they CONTRADICT the prosecutor
+                
+                if contradicts > supports:
+                    # Majority contradicts the original claim → Supports prosecutor
+                    trust_score = confidence  # Use Gemini's confidence level
+                    tier3_details = f"Consensus: {contradicts}/{consensus_data['count']} sources contradict claim. {reasoning}"
+                elif supports > contradicts:
+                    # Majority supports the original claim → Contradicts prosecutor
+                    trust_score = "Low"
+                    tier3_details = f"Consensus AGAINST prosecutor: {supports}/{consensus_data['count']} sources support claim. {reasoning}"
+                else:
+                    # Tie or unclear
+                    trust_score = "Low"
+                    tier3_details = f"No clear consensus: {supports} support, {contradicts} contradict. {reasoning}"
+                
+                verified_prosecutor.append(VerifiedEvidence(
+                    source_url=source_url,
+                    key_fact=key_fact,
+                    side="prosecutor",
+                    trust_score=trust_score,
+                    verification_method="Tier3-Consensus",
+                    verification_details=tier3_details
+                ))
+            else:
+                # All tiers failed - mark as Low trust
+                print(f"          ALL TIERS FAILED - Marking as Low Trust")
+                verified_prosecutor.append(VerifiedEvidence(
+                    source_url=source_url,
+                    key_fact=key_fact,
+                    side="prosecutor",
+                    trust_score="Low",
+                    verification_method="Unverified",
+                    verification_details="Could not verify through any tier"
+                ))
+        
+        # Process defender facts
+        defender_facts = claim_evidence.defender_facts if hasattr(claim_evidence, 'defender_facts') else claim_evidence.get('defender_facts', [])
+        
+        for fact in defender_facts:
+            fact_obj = fact if isinstance(fact, dict) else fact
+            source_url = fact_obj.get('source_url') if isinstance(fact_obj, dict) else fact_obj.source_url
+            key_fact = fact_obj.get('key_fact') if isinstance(fact_obj, dict) else fact_obj.key_fact
+            suggested_domains = fact_obj.get('suggested_trusted_domains') if isinstance(fact_obj, dict) else fact_obj.suggested_trusted_domains
+            
+            print(f"\n       Verifying Defender Fact: {key_fact[:80]}...")
+            
+            # TIER 1: Google Fact Check API
+            tier1_result = check_google_fact_check_tool(key_fact)
+            
+            if "MATCH:" in tier1_result:
+                print(f"          TIER 1 VERIFIED: {tier1_result}")
+                verified_defender.append(VerifiedEvidence(
+                    source_url=source_url,
+                    key_fact=key_fact,
+                    side="defender",
+                    trust_score="High",
+                    verification_method="Tier1-FactCheck",
+                    verification_details=tier1_result
+                ))
+                continue
+            
+            # TIER 2: Universal Domain Trust Check
+            domain_trust = get_domain_trust_level(source_url)
+            is_suggested = is_trusted_domain(source_url, suggested_domains)
+            
+            if domain_trust == "High" or is_suggested:
+                tier2_details = f"Domain Trust: {domain_trust}, Matches Suggested: {is_suggested}"
+                print(f"          TIER 2 VERIFIED: {tier2_details}")
+                verified_defender.append(VerifiedEvidence(
+                    source_url=source_url,
+                    key_fact=key_fact,
+                    side="defender",
+                    trust_score=domain_trust,
+                    verification_method="Tier2-Domain",
+                    verification_details=tier2_details
+                ))
+                continue
+            
+            # TIER 3: Consensus Check (NOW USES GEMINI!)
+            print(f"          Running TIER 3 Consensus Check...")
+            consensus_data = consensus_search_tool(key_fact[:100])
+            
+            if consensus_data.get("success"):
+                # Analyze consensus using Gemini API
+                consensus_analysis = analyze_consensus_with_gemini(
+                    key_fact,
+                    consensus_data.get("results", [])
+                )
+                
+                supports = consensus_analysis.get("supports", 0)
+                contradicts = consensus_analysis.get("contradicts", 0)
+                confidence = consensus_analysis.get("confidence", "Low")
+                reasoning = consensus_analysis.get("reasoning", "No reasoning provided")
+                
+                print(f"          TIER 3 CONSENSUS: {supports} support, {contradicts} contradict")
+                print(f"          Confidence: {confidence}")
+                
+                # Determine trust score based on consensus
+                # For DEFENDER facts (supporting the claim):
+                # - If sources SUPPORT the original claim = they SUPPORT the defender
+                # - If sources CONTRADICT the original claim = they CONTRADICT the defender
+                
+                if supports > contradicts:
+                    # Majority supports the original claim → Supports defender
+                    trust_score = confidence  # Use Gemini's confidence level
+                    tier3_details = f"Consensus: {supports}/{consensus_data['count']} sources support claim. {reasoning}"
+                elif contradicts > supports:
+                    # Majority contradicts the original claim → Contradicts defender
+                    trust_score = "Low"
+                    tier3_details = f"Consensus AGAINST defender: {contradicts}/{consensus_data['count']} sources contradict claim. {reasoning}"
+                else:
+                    # Tie or unclear
+                    trust_score = "Low"
+                    tier3_details = f"No clear consensus: {supports} support, {contradicts} contradict. {reasoning}"
+                
+                verified_defender.append(VerifiedEvidence(
+                    source_url=source_url,
+                    key_fact=key_fact,
+                    side="defender",
+                    trust_score=trust_score,
+                    verification_method="Tier3-Consensus",
+                    verification_details=tier3_details
+                ))
+            else:
+                # All tiers failed - mark as Low trust
+                print(f"          ALL TIERS FAILED - Marking as Low Trust")
+                verified_defender.append(VerifiedEvidence(
+                    source_url=source_url,
+                    key_fact=key_fact,
+                    side="defender",
+                    trust_score="Low",
+                    verification_method="Unverified",
+                    verification_details="Could not verify through any tier"
+                ))
+        
+        verified_claims.append({
+            'claim_id': claim_id,
+            'verified_prosecutor': verified_prosecutor,
+            'verified_defender': verified_defender
+        })
+
+    print(f"\n   {'='*70}")
+    print(f"    FACT-CHECKING COMPLETE")
+    print(f"   {'='*70}")
+
+    # Store verified evidence back in state
+    return {'verified_evidence': verified_claims}
+
+def final_analysis_node(state: CourtroomState):
+    """
+    PHASE 4: Judge Analysis - Single API Call for ALL Claims + Final Verdict
+    Takes all verified evidence and produces:
+    - Individual claim analyses with verdicts
+    - Overall implication connection
+
+    Target: 1 API call total
+    """
+    print("\nFINAL ANALYSIS: Judge Writing Verdict...")
+    print("TARGET: 1 API call for all claims + implication")
+
+    decomposed = state.get('decomposed_data')
+    verified_evidence = state.get('verified_evidence', [])
+
+    if not decomposed or not verified_evidence:
+        print("Insufficient data for final analysis. Skipping.")
+        return {"final_verdict": None}
+
+    # Build comprehensive evidence summary
+    all_claims_summary = ""
+
+    for verified_claim in verified_evidence:
+        claim_id = verified_claim['claim_id']
+        
+        # Find the original claim
+        original_claim = None
+        for claim in decomposed.claims:
+            if claim.id == claim_id:
+                original_claim = claim
+                break
+        
+        if not original_claim:
+            continue
+        
+        all_claims_summary += f"\n{'='*70}\n"
+        all_claims_summary += f"CLAIM #{claim_id}: {original_claim.claim_text}\n"
+        all_claims_summary += f"CATEGORY: {original_claim.topic_category}\n"
+        all_claims_summary += f"{'='*70}\n"
+        
+        # Prosecutor Evidence
+        all_claims_summary += "\nPROSECUTOR EVIDENCE (Contradicting):\n"
+        for i, evidence in enumerate(verified_claim['verified_prosecutor'], 1):
+            ev_obj = evidence if isinstance(evidence, dict) else evidence
+            ev_fact = ev_obj.get('key_fact') if isinstance(ev_obj, dict) else ev_obj.key_fact
+            ev_url = ev_obj.get('source_url') if isinstance(ev_obj, dict) else ev_obj.source_url
+            ev_trust = ev_obj.get('trust_score') if isinstance(ev_obj, dict) else ev_obj.trust_score
+            ev_method = ev_obj.get('verification_method') if isinstance(ev_obj, dict) else ev_obj.verification_method
+            ev_details = ev_obj.get('verification_details') if isinstance(ev_obj, dict) else ev_obj.verification_details
+            
+            all_claims_summary += f"\n  [{i}] FACT: {ev_fact}\n"
+            all_claims_summary += f"      SOURCE: {ev_url}\n"
+            all_claims_summary += f"      TRUST: {ev_trust}\n"
+            all_claims_summary += f"      VERIFICATION: {ev_method}\n"
+            all_claims_summary += f"      DETAILS: {ev_details}\n"
+        
+        if not verified_claim['verified_prosecutor']:
+            all_claims_summary += "  No contradicting evidence found.\n"
+        
+        # Defender Evidence
+        all_claims_summary += "\nDEFENDER EVIDENCE (Supporting):\n"
+        for i, evidence in enumerate(verified_claim['verified_defender'], 1):
+            ev_obj = evidence if isinstance(evidence, dict) else evidence
+            ev_fact = ev_obj.get('key_fact') if isinstance(ev_obj, dict) else ev_obj.key_fact
+            ev_url = ev_obj.get('source_url') if isinstance(ev_obj, dict) else ev_obj.source_url
+            ev_trust = ev_obj.get('trust_score') if isinstance(ev_obj, dict) else ev_obj.trust_score
+            ev_method = ev_obj.get('verification_method') if isinstance(ev_obj, dict) else ev_obj.verification_method
+            ev_details = ev_obj.get('verification_details') if isinstance(ev_obj, dict) else ev_obj.verification_details
+            
+            all_claims_summary += f"\n  [{i}] FACT: {ev_fact}\n"
+            all_claims_summary += f"      SOURCE: {ev_url}\n"
+            all_claims_summary += f"      TRUST: {ev_trust}\n"
+            all_claims_summary += f"      VERIFICATION: {ev_method}\n"
+            all_claims_summary += f"      DETAILS: {ev_details}\n"
+        
+        if not verified_claim['verified_defender']:
+            all_claims_summary += "  No supporting evidence found.\n"
+        
+        all_claims_summary += "\n"
+
+    # Create analysis prompt
+    analysis_prompt = f"""
+    You are the Supreme Court Chief Justice delivering the FINAL COMPREHENSIVE VERDICT.
+
+    CORE IMPLICATION UNDER REVIEW:
+    "{decomposed.implication}"
+
+    ALL CLAIMS WITH VERIFIED EVIDENCE:
+    {all_claims_summary}
+
+    YOUR TASK:
+    Analyze ALL claims and produce a complete verdict structure.
+
+    FOR EACH CLAIM:
+    1. Determine status: "Verified", "Debunked", or "Unclear"
+       - "Verified" if defender evidence is stronger, from high-trust sources
+       - "Debunked" if prosecutor evidence is stronger, from high-trust sources
+       - "Unclear" if evidence is balanced, low-trust, or insufficient
+
+    2. Write a DETAILED PARAGRAPH (150-250 words) that:
+       - States verdict clearly in opening sentence
+       - Explains reasoning behind verdict
+       - References SPECIFIC evidence from both sides
+       - Compares quality and credibility of sources
+       - Addresses trust scores and verification methods
+       - Includes specific facts, numbers, dates, citations from evidence
+       - Makes reasoning crystal clear
+
+    FOR OVERALL IMPLICATION:
+    1. Determine overall verdict:
+       - "True" if implication supported by verified claims
+       - "False" if implication contradicted by debunked claims
+       - "Partially True" if some claims verified, others debunked
+       - "Unverified" if most claims unclear or insufficient evidence
+
+    2. Write LONG DETAILED PARAGRAPH (200-300 words) that:
+       - Opens with clear overall verdict statement
+       - Explains HOW implication relates to individual claims
+       - Connects dots between verified/debunked/unclear claims
+       - Addresses SELECTIVE USE OF FACTS if applicable
+       - Explains what evidence collectively reveals
        - Discusses correlation vs causation where relevant
-       - Provides a comprehensive, nuanced conclusion
-       - References specific claims by number when explaining reasoning
-    
-    WRITING GUIDELINES:
-    - Be balanced and objective, not prosecutorial or defensive
-    - Acknowledge complexity where it exists
-    - Explain why certain verified claims don't necessarily support the implication
-    - Address context and how facts can be true but misleading when isolated
-    - Make connections explicit: "Although Claim 1 is verified, it doesn't support the implication because..."
-    
+       - Provides comprehensive, nuanced conclusion
+       - References specific claims by number
+
     OUTPUT FORMAT:
-    Return JSON object:
+    Return JSON object with this structure:
     {{
       "overall_verdict": "True" | "False" | "Partially True" | "Unverified",
       "implication_connection": "Your 200-300 word comprehensive paragraph...",
-      "claim_analyses": []
+      "claim_analyses": [
+        {{
+          "claim_id": 1,
+          "claim_text": "The claim text",
+          "status": "Verified" | "Debunked" | "Unclear",
+          "detailed_paragraph": "Your 150-250 word analysis...",
+          "prosecutor_evidence": [...],
+          "defender_evidence": [...]
+        }}
+      ]
     }}
-    
-    NOTE: Leave claim_analyses as empty array [] - will be populated automatically.
-    
-    EXAMPLE PARAGRAPH (Partially True):
-    "The overall implication that 'bursting firecrackers during Diwali is an ancient Hindu tradition with scriptural origins' receives a verdict of PARTIALLY TRUE. While Claim 1 regarding mentions in ancient scriptures is VERIFIED—the Skanda Purana does reference 'akash deepa' or sky lamps in religious contexts—this doesn't fully support the broader implication. The verified scriptural references describe oil lamps and ceremonial fires, not explosive firecrackers as we know them today. Claim 2, which asserts that firecracker bursting predates the British period, was DEBUNKED by historical evidence showing that gunpowder-based firecrackers were introduced to India during Mughal rule and popularized in the colonial era. The Supreme Court ruling (Claim 3) is VERIFIED but addresses environmental and health concerns rather than historical or religious legitimacy. This is a classic case of selective fact usage: while ancient fire-based rituals are indeed traditional, conflating them with modern firecrackers creates a misleading narrative. The implication uses one verified element (ancient fire rituals) to justify a different practice (explosive firecrackers) that lacks the claimed historical depth. The evidence suggests that while fire has always been central to Diwali, the specific practice of bursting firecrackers is a relatively recent addition to the celebration, making the core implication misleading despite containing a kernel of truth."
+
+    WRITING STYLE:
+    - Professional, balanced, objective
+    - Reference specific evidence with sources
+    - Compare evidence quality explicitly
+    - Explain trust scores and verification tiers
+    - Make connections explicit and clear
+
+    CRITICAL: Include ALL claims in claim_analyses array. Each claim MUST have a detailed analysis.
     """
-    
-    final_verdict_data = safe_invoke_json(llm_analysis, final_prompt, FinalVerdict)
-    
+
+    final_verdict_data = safe_invoke_json(llm_analysis, analysis_prompt, FinalVerdict)
+
     if final_verdict_data:
-        # Ensure claim_analyses is included
-        final_verdict_data['claim_analyses'] = [
-            a.model_dump() if hasattr(a, 'model_dump') else a 
-            for a in all_claim_analyses
-        ]
+        # Ensure verified evidence is properly attached to each claim analysis
+        for i, analysis in enumerate(final_verdict_data.get('claim_analyses', [])):
+            analysis_id = analysis.get('claim_id')
+            
+            # Find matching verified evidence
+            for verified_claim in verified_evidence:
+                if verified_claim['claim_id'] == analysis_id:
+                    # Attach verified evidence if not already present
+                    if not analysis.get('prosecutor_evidence'):
+                        analysis['prosecutor_evidence'] = verified_claim['verified_prosecutor']
+                    if not analysis.get('defender_evidence'):
+                        analysis['defender_evidence'] = verified_claim['verified_defender']
+                    break
         
         final_verdict = FinalVerdict(**final_verdict_data)
         
-        final_api_calls = api_call_count - (1 + total_claim_api_calls)  # Subtract decomposer + claims
-        
-        print(f"    Final Verdict Written")
+        print(f"    Final Analysis Complete")
         print(f"    Overall Verdict: {final_verdict.overall_verdict}")
-        print(f"    Connection paragraph: {len(final_verdict.implication_connection)} chars")
-        print(f"    API calls for final verdict: {final_api_calls}")
-        
-        print(f"\n   {'='*70}")
-        print(f"    TOTAL API CALL BREAKDOWN")
-        print(f"   {'='*70}")
-        print(f"   Phase 1 (Decomposer): 1 call")
-        print(f"   Phase 2 (Claims): {total_claim_api_calls} calls ({total_claim_api_calls / len(decomposed.claims):.1f} avg per claim)")
-        print(f"   Phase 3 (Final Verdict): {final_api_calls} call")
-        print(f"   TOTAL: {api_call_count} calls")
+        print(f"    Total Claims Analyzed: {len(final_verdict.claim_analyses)}")
+        print(f"    API Calls: 1")
         
         return {"final_verdict": final_verdict}
     else:
-        print(f"    Final verdict generation failed")
+        print(f"    Final analysis generation failed")
         # Create fallback verdict
+        fallback_analyses = []
+        for verified_claim in verified_evidence:
+            fallback_analyses.append(ClaimAnalysis(
+                claim_id=verified_claim['claim_id'],
+                claim_text="Claim analysis unavailable",
+                status="Unclear",
+                detailed_paragraph="Unable to complete analysis due to system error.",
+                prosecutor_evidence=verified_claim['verified_prosecutor'][:2],
+                defender_evidence=verified_claim['verified_defender'][:2]
+            ))
+        
         fallback_verdict = FinalVerdict(
             overall_verdict="Unverified",
-            implication_connection=f"Unable to reach a final verdict on the implication '{decomposed.implication}' due to analysis errors. The system successfully analyzed {len(all_claim_analyses)} individual claims, but could not synthesize a final conclusion.",
-            claim_analyses=all_claim_analyses
+            implication_connection=f"Unable to reach a final verdict on the implication '{decomposed.implication}' due to analysis errors.",
+            claim_analyses=fallback_analyses
         )
         return {"final_verdict": fallback_verdict}
 
 # ==============================================================================
-# 5. WORKFLOW
+# 6. WORKFLOW
 # ==============================================================================
-
 workflow = StateGraph(CourtroomState)
-
 workflow.add_node("claim_decomposer", claim_decomposer_node)
-workflow.add_node("investigator_judge", investigator_and_judge_node)
+workflow.add_node("evidence_extractor", evidence_extraction_node)
+workflow.add_node("fact_checker", three_tier_fact_check_node_batched)
+workflow.add_node("final_analyzer", final_analysis_node)
 
 workflow.add_edge(START, "claim_decomposer")
-workflow.add_edge("claim_decomposer", "investigator_judge")
-workflow.add_edge("investigator_judge", END)
+workflow.add_edge("claim_decomposer", "evidence_extractor")
+workflow.add_edge("evidence_extractor", "fact_checker")
+workflow.add_edge("fact_checker", "final_analyzer")
+workflow.add_edge("final_analyzer", END)
 
 app = workflow.compile()
 
 # ==============================================================================
-# 6. WRAPPER FUNCTION FOR API USAGE
+# 7. WRAPPER FUNCTION FOR API USAGE
 # ==============================================================================
-
 def analyze_text(transcript: str) -> dict:
     """Wrapper function to analyze transcript and return verdict result"""
     try:
@@ -1179,34 +1893,33 @@ def analyze_text(transcript: str) -> dict:
         return {"error": str(e)}
 
 # ==============================================================================
-# 7. PRETTY PRINTER FOR RESULTS
+# 8. PRETTY PRINTER FOR RESULTS
 # ==============================================================================
-
 def print_verdict_report(verdict_dict):
-    """Pretty print the final verdict in the new format"""
+    """Pretty print the final verdict"""
     if not verdict_dict:
         print("No verdict data to display")
         return
     
     v = verdict_dict
-    
+
     print("\n" + "="*80)
     print("FINAL VERDICT REPORT")
     print("="*80)
-    
+
     # Overall Verdict
     overall = v.get('overall_verdict') if isinstance(v, dict) else v.overall_verdict
-    print(f"\n OVERALL VERDICT: {overall.upper()}")
+    print(f"\nOVERALL VERDICT: {overall.upper()}")
     print("="*80)
-    
+
     # Implication Connection
     connection = v.get('implication_connection') if isinstance(v, dict) else v.implication_connection
-    print(f"\n IMPLICATION ANALYSIS:\n")
+    print(f"\nIMPLICATION ANALYSIS:\n")
     print(connection)
-    
+
     # Individual Claim Analyses
     analyses = v.get('claim_analyses') if isinstance(v, dict) else v.claim_analyses
-    
+
     if analyses:
         print("\n" + "="*80)
         print("DETAILED CLAIM-BY-CLAIM ANALYSIS")
@@ -1229,73 +1942,38 @@ def print_verdict_report(verdict_dict):
             
             # Prosecutor Facts
             if a_pros:
-                print(f"\n PROSECUTOR FACTS (Contradicting):")
+                print(f"\nPROSECUTOR FACTS (Contradicting):")
                 for i, fact in enumerate(a_pros, 1):
                     f_url = fact.get('source_url') if isinstance(fact, dict) else fact.source_url
                     f_key = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
                     f_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
+                    f_method = fact.get('verification_method') if isinstance(fact, dict) else fact.verification_method
+                    f_details = fact.get('verification_details') if isinstance(fact, dict) else fact.verification_details
                     
                     print(f"\n   {i}. {f_key}")
                     print(f"       Source: {f_url}")
                     print(f"       Trust: {f_trust}")
+                    print(f"       Verification: {f_method}")
+                    print(f"       Details: {f_details}")
             else:
-                print(f"\n PROSECUTOR FACTS: No contradicting evidence found")
+                print(f"\nPROSECUTOR FACTS: No contradicting evidence found")
             
             # Defender Facts
             if a_def:
-                print(f"\n DEFENDER FACTS (Supporting):")
+                print(f"\nDEFENDER FACTS (Supporting):")
                 for i, fact in enumerate(a_def, 1):
                     f_url = fact.get('source_url') if isinstance(fact, dict) else fact.source_url
                     f_key = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
                     f_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
+                    f_method = fact.get('verification_method') if isinstance(fact, dict) else fact.verification_method
+                    f_details = fact.get('verification_details') if isinstance(fact, dict) else fact.verification_details
                     
                     print(f"\n   {i}. {f_key}")
                     print(f"       Source: {f_url}")
                     print(f"       Trust: {f_trust}")
+                    print(f"       Verification: {f_method}")
+                    print(f"       Details: {f_details}")
             else:
-                print(f"\n DEFENDER FACTS: No supporting evidence found")
-    
-    print("\n" + "="*80)
+                print(f"\nDEFENDER FACTS: No supporting evidence found")
 
-# ==============================================================================
-# 8. RUNNER
-# ==============================================================================
 
-if __name__ == "__main__":
-    transcript = "Bursting firecrackers is an ancient Hindu tradition mentioned in the Skanda Purana and predates the British colonial period in India."
-    
-    print(f" OPTIMIZED FACT-CHECK ENGINE STARTING")
-    print("="*80)
-    print(f" TRANSCRIPT: '{transcript}'")
-    print("="*80)
-    print(f"\n API CALL TARGET:")
-    print(f"   • Phase 1 (Decomposer): 1 call")
-    print(f"   • Phase 2 (Per Claim): ≤5 calls each")
-    print(f"   • Phase 3 (Final Verdict): 1 call")
-    print(f" Rate Limiting: {API_CALL_DELAY}s delay between calls")
-    print(f" Model: {MODEL_NAME}")
-    
-    try:
-        start_time = time.time()
-        result = app.invoke({"transcript": transcript})
-        elapsed = time.time() - start_time
-        
-        print("\n" + "="*80)
-        print(f" EXECUTION COMPLETE")
-        print("="*80)
-        print(f"Total Runtime: {elapsed / 60:.1f} minutes ({elapsed:.0f} seconds)")
-        print(f"Total API Calls: {api_call_count}")
-        print(f"Average Time per Call: {elapsed / api_call_count:.1f}s")
-        
-        # Print the formatted verdict
-        verdict = result.get('final_verdict')
-        if verdict:
-            print_verdict_report(verdict)
-        else:
-            print("\nNo verdict generated")
-
-    except Exception as e:
-        print(f"\n SYSTEM FAILURE: {e}")
-        print(f" API calls completed before failure: {api_call_count}")
-        import traceback
-        traceback.print_exc()
