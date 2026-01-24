@@ -26,13 +26,13 @@ MAX_RETRIES_ON_QUOTA = 3
 api_call_count = 0
 
 llm_analysis = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-3-flash-preview",
     google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"), 
     temperature=0
 )
 
 llm_search = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-3-flash-preview",
     google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),   
     temperature=0.4
 )
@@ -80,9 +80,8 @@ TRUSTED_DOMAINS = {
         "wto.org", "icc-cpi.int", "icj-cij.org", "unhcr.org"
     ],
     "untrusted": [
-        "quora.com", "reddit.com", "twitter.com", "x.com", "facebook.com",
-        "instagram.com", "tiktok.com", "pinterest.com", "medium.com",
-        "linkedin.com", "tumblr.com", "buzzfeed.com", "9gag.com"
+        "quora.com", "reddit.com", "x.com", "facebook.com",
+        "instagram.com", "medium.com","linkedin.com"
     ]
 }
 
@@ -506,17 +505,7 @@ def consensus_search_tool(claim: str):
     
     # Additional social media and forum sites to exclude
     additional_exclusions = [
-        "-site:facebook.com",
-        "-site:instagram.com", 
-        "-site:tiktok.com",
-        "-site:pinterest.com",
-        "-site:tumblr.com",
-        "-site:buzzfeed.com",
-        "-site:9gag.com",
-        "-site:stackexchange.com",
-        "-site:yahoo.com/answers",
-        "-site:answers.com",
-        "-site:ask.com"
+        "-site:stackexchange.com"
     ]
     
     all_exclusions = " ".join(exclusions + additional_exclusions)
