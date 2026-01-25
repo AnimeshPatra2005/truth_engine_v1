@@ -21,7 +21,7 @@ load_dotenv()
 # 1. SETUP
 # ==============================================================================
 MODEL_NAME = "gemini-2.5-flash"
-API_CALL_DELAY = 10
+API_CALL_DELAY = 2  # Reduced from 10s - using 2 API keys for load balancing
 MAX_RETRIES_ON_QUOTA = 3
 api_call_count = 0
 
