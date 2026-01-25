@@ -243,7 +243,6 @@ def clean_llm_json(raw_text: str, expect_array: bool = None) -> str:
     
     # 3.5. Fix nested unescaped quotes in JSON strings
 
-    import re
     def fix_nested_quotes(match):
         full_match = match.group(0)
         key = match.group(1)
