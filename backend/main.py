@@ -14,7 +14,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost",
         "https://truth-engine-v1.vercel.app",
-        "https://*.vercel.app"  # For preview deployments
+        "https://truth-engine-v1-animeshpatra2005s-projects.vercel.app",  # Full Vercel domain
     ],
     allow_credentials=True,
     allow_methods=["*"],
