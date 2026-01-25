@@ -27,15 +27,25 @@ api_call_count = 0
 
 llm_analysis = ChatGoogleGenerativeAI(
     model="gemini-3-flash-preview",
-    google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"), 
+    google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"), 
     temperature=0
 )
 
 llm_search = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
-    google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),   
-    temperature=0.4
+    model="gemini-2.5-flash",
+    google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"),   
+    temperature=0.2
 )
+
+# Load Balancing Helper
+def get_balanced_llm():
+    """
+    Alternates between llm_analysis and llm_search for load balancing.
+    Even API calls use llm_analysis, odd calls use llm_search.
+    """
+    global api_call_count
+    return llm_analysis if (api_call_count % 2 == 0) else llm_search
+
 
 # ==============================================================================
 # 2. TRUSTED DOMAINS CATALOG
@@ -629,7 +639,7 @@ def analyze_consensus_with_gemini(claim: str, search_results: list) -> dict:
         confidence: Literal["High", "Medium", "Low"] = Field(description="Confidence level based on agreement percentage")
         reasoning: str = Field(description="Brief explanation of consensus pattern")
     
-    analysis = safe_invoke_json(llm_search, prompt, ConsensusAnalysis)
+    analysis = safe_invoke_json(get_balanced_llm(), prompt, ConsensusAnalysis)
     
     if not analysis:
         return {
@@ -820,7 +830,7 @@ def claim_decomposer_node(state: CourtroomState):
         REMEMBER: ALWAYS include "supporting documents OR supporting texts OR supporting evidence" in BOTH queries!
         """
         
-        data = safe_invoke_json(llm_analysis, prompt, DecomposedClaims)
+        data = safe_invoke_json(get_balanced_llm(), prompt, DecomposedClaims)
         
         if not data:
             raise ValueError("Decomposition returned empty data")
@@ -1017,7 +1027,7 @@ def evidence_extraction_node(state: CourtroomState):
         CRITICAL: Each fact must be NON-OVERLAPPING and INFORMATION-RICH. No general claims allowed.
         """
         
-        evidence_data = safe_invoke_json(llm_analysis, extract_prompt, ClaimEvidence)
+        evidence_data = safe_invoke_json(get_balanced_llm(), extract_prompt, ClaimEvidence)
         
         if evidence_data:
             claim_evidence = ClaimEvidence(**evidence_data)
@@ -1806,7 +1816,7 @@ def final_analysis_node(state: CourtroomState):
     CRITICAL: Include ALL claims in claim_analyses array. Each claim MUST have a detailed analysis.
     """
 
-    final_verdict_data = safe_invoke_json(llm_analysis, analysis_prompt, FinalVerdict)
+    final_verdict_data = safe_invoke_json(get_balanced_llm(), analysis_prompt, FinalVerdict)
 
     if final_verdict_data:
         # Ensure verified evidence is properly attached to each claim analysis
