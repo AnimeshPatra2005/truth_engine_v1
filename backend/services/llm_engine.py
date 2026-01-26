@@ -241,18 +241,21 @@ def clean_llm_json(raw_text: str, expect_array: bool = None) -> str:
     # 3. Fix double-escaped quotes (\\" → ")
     text = text.replace('\\"', '"')
     
+    # 3.3. Normalize mixed quotes 
+    text = re.sub(r"(?<![a-zA-Z])'(?![a-zA-Z])", '"', text)  # ' → " except in contractions
+    
     # 3.5. Fix nested unescaped quotes in JSON strings
-
+    # After normalization, if there are still nested quotes, convert them to escaped quotes
     def fix_nested_quotes(match):
-        full_match = match.group(0)
         key = match.group(1)
         value = match.group(2)
-        # Replace inner quotes with single quotes
-        fixed_value = value.replace('"', "'")
+        # Escape inner quotes
+        fixed_value = value.replace('"', '\\"')
         return f'"{key}": "{fixed_value}"'
     
-    # Match "key": "value" patterns and fix nested quotes in values
-    text = re.sub(r'"([^"]+)":\s*"([^"]*(?:"[^"]*)*)"', fix_nested_quotes, text)
+    # Match "key": "value with potential "nested" quotes" patterns
+    # This is a simplified approach - matches key:value pairs
+    text = re.sub(r'"([^"]+)":\s*"((?:[^"\\]|\\.)*)"', fix_nested_quotes, text)
     
     # 4. Remove trailing commas before } or ] (invalid JSON)
     text = re.sub(r',(\s*[}\]])', r'\1', text)
