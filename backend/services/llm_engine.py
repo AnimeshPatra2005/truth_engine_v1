@@ -27,13 +27,13 @@ api_call_count = 0
 
 llm_analysis = ChatGoogleGenerativeAI(
     model="gemini-3-flash-preview",
-    google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"), 
+    google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"), 
     temperature=0
 )
 
 llm_search = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"),   
+    model="gemini-3-flash-preview",
+    google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),   
     temperature=0.2
 )
 
