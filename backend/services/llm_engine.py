@@ -8,6 +8,7 @@ from typing import Annotated, List, Optional, TypedDict, Literal
 from dotenv import load_dotenv
 from urllib.parse import urlparse
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import json_repair  # LLM-specific JSON repair library
 
 # LangGraph & AI
 from langgraph.graph import StateGraph, END, START
@@ -353,20 +354,18 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
             else:
                 content = str(response)
             
-            # USE CENTRALIZED JSON CLEANER (expects object for Pydantic validation)
-            cleaned_content = clean_llm_json(content, expect_array=False)
-            
-            # Parse and validate
+            # Use json_repair to parse - it handles all LLM quirks automatically
+            # (mixed quotes, nested quotes, trailing commas, markdown blocks, etc.)
             try:
-                parsed_dict = json.loads(cleaned_content)
+                parsed_dict = json_repair.loads(content)
                 validated_obj = pydantic_object(**parsed_dict)
                 print(f"    API Call #{api_call_count} successful")
                 return validated_obj.model_dump()
-            except json.JSONDecodeError as je:
+            except (ValueError, TypeError, Exception) as je:
+                # json_repair.loads() can raise ValueError/TypeError in extreme cases
                 # Log the error with raw content for debugging
                 print(f"    JSON Parse Error: {je}")
                 print(f"    Raw response (first 300 chars): {content[:300]}")
-                print(f"    Cleaned content (first 300 chars): {cleaned_content[:300]}")
                 raise  # Re-raise to trigger retry logic
 
         except Exception as e:
@@ -442,11 +441,9 @@ Rules:
             else:
                 content = str(response)
             
-            # Clean expecting array
-            cleaned_content = clean_llm_json(content, expect_array=True)
-            
+            # Use json_repair to parse array
             try:
-                parsed_array = json.loads(cleaned_content)
+                parsed_array = json_repair.loads(content)
                 
                 if not isinstance(parsed_array, list):
                     print(f"    Expected array but got {type(parsed_array)}")
@@ -465,10 +462,10 @@ Rules:
                 print(f"    API Call #{api_call_count} successful - {len(validated_items)} items")
                 return validated_items
                 
-            except json.JSONDecodeError as je:
+            except (ValueError, TypeError, Exception) as je:
+                # json_repair.loads() can raise ValueError/TypeError in extreme cases
                 print(f"    JSON Parse Error: {je}")
                 print(f"    Raw response (first 300 chars): {content[:300]}")
-                print(f"    Cleaned content (first 300 chars): {cleaned_content[:300]}")
                 raise
 
         except Exception as e:
