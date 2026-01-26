@@ -194,122 +194,95 @@ def search_web_with_count(query: str, num_results: int = 5, intent: str = "gener
 def clean_llm_json(raw_text: str, expect_array: bool = None) -> str:
     """
     Clean LLM-generated JSON before parsing.
-    Handles common issues like markdown formatting, escaped characters, and trailing commas.
-    
-    Args:
-        raw_text: Raw text from LLM that should contain JSON
-        expect_array: If True, prioritize array extraction. If False, prioritize object extraction.
-                     If None, auto-detect based on what's found first.
-        
-    Returns:
-        Cleaned JSON string ready for parsing
+    Handles markdown formatting, escaped characters, and trailing commas.
     """
     if not raw_text:
         return "[]" if expect_array else "{}"
     
     text = str(raw_text).strip()
     
-    # 0. Handle Gemini's dictionary response format: {'type': 'text', 'text': '...'}
-    # This happens when response.content is a dict instead of a string
+    # Handle Gemini's dict response format: {'type': 'text', 'text': '...'}
     if text.startswith("{'type':") or text.startswith('{"type":'):
-        # Try to extract the actual JSON from the 'text' field
         try:
-            # First, try to parse it as a Python dict representation
             import ast
             parsed = ast.literal_eval(text)
             if isinstance(parsed, dict) and 'text' in parsed:
                 text = parsed['text']
         except:
-            # If that fails, use regex to extract content between 'text': ' and the last '
             match = re.search(r"'text':\s*'(.*)'(?:\s*})?$", text, re.DOTALL)
             if match:
                 text = match.group(1)
             else:
-                # Try with double quotes
                 match = re.search(r'"text":\s*"(.*)"(?:\s*})?$', text, re.DOTALL)
                 if match:
                     text = match.group(1)
     
-    # 1. Remove markdown code blocks (```json ... ``` or ``` ... ```)
+    # Remove markdown code blocks
     text = re.sub(r'^```json\s*', '', text, flags=re.MULTILINE)
     text = re.sub(r'^```\s*$', '', text, flags=re.MULTILINE)
     text = re.sub(r'```', '', text)
     
-    # 2. Fix escaped newlines (literal \\n instead of actual newlines)
+    # Fix escaped characters
     text = text.replace('\\n', ' ')
     text = text.replace('\n', ' ')
-    
-    # 3. Fix double-escaped quotes (\\" → ")
     text = text.replace('\\"', '"')
     
-    # 3.3. Normalize mixed quotes 
-    text = re.sub(r"(?<![a-zA-Z])'(?![a-zA-Z])", '"', text)  # ' → " except in contractions
+    # Normalize mixed quotes
+    text = re.sub(r"(?<![a-zA-Z])'(?![a-zA-Z])", '"', text)
     
-    # 3.5. Fix nested unescaped quotes in JSON strings
-    # After normalization, if there are still nested quotes, convert them to escaped quotes
+    # Fix nested unescaped quotes
     def fix_nested_quotes(match):
         key = match.group(1)
         value = match.group(2)
-        # Escape inner quotes
         fixed_value = value.replace('"', '\\"')
         return f'"{key}": "{fixed_value}"'
     
-    # Match "key": "value with potential "nested" quotes" patterns
-    # This is a simplified approach - matches key:value pairs
     text = re.sub(r'"([^"]+)":\s*"((?:[^"\\]|\\.)*)"', fix_nested_quotes, text)
     
-    # 4. Remove trailing commas before } or ] (invalid JSON)
+    # Remove trailing commas
     text = re.sub(r',(\s*[}\]])', r'\1', text)
     
-    # 5. Remove extra whitespace
+    # Remove extra whitespace
     text = ' '.join(text.split())
     
-    # 6. Extract JSON based on context (array vs object)
+    # Extract JSON based on expected type
     has_array = '[' in text and ']' in text
     has_object = '{' in text and '}' in text
     
     if expect_array is True:
-        # Caller expects array - prioritize array extraction
         if has_array:
             start = text.find('[')
             end = text.rfind(']') + 1
             text = text[start:end]
         elif has_object:
-            # Found object but expected array - check if multiple objects
             start = text.find('{')
             end = text.rfind('}') + 1
             text = text[start:end]
             if '}{' in text:
-                # Multiple objects concatenated - wrap in array
                 text = '[' + text.replace('}{', '},{') + ']'
             else:
-                # Single object - wrap in array
                 text = '[' + text + ']'
     
     elif expect_array is False:
-        # Caller expects object - prioritize object extraction
         if has_object:
             start = text.find('{')
             end = text.rfind('}') + 1
             text = text[start:end]
-            # DO NOT wrap multiple objects - let it fail so we can debug
         elif has_array:
-            # Found array but expected object - extract first element
             start = text.find('[')
             end = text.rfind(']') + 1
             array_text = text[start:end]
             try:
-                import json
                 parsed = json.loads(array_text)
                 if isinstance(parsed, list) and len(parsed) > 0:
                     text = json.dumps(parsed[0])
                 else:
-                    text = array_text  # Keep as-is, will fail later
+                    text = array_text
             except:
-                text = array_text  # Keep as-is, will fail later
+                text = array_text
     
     else:
-        # Auto-detect (legacy behavior) - prioritize array
+        # Auto-detect
         if has_array:
             start = text.find('[')
             end = text.rfind(']') + 1
@@ -355,25 +328,33 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
                 content = str(response)
             
             # Use json_repair to parse - it handles all LLM quirks automatically
-            # (mixed quotes, nested quotes, trailing commas, markdown blocks, etc.)
             try:
                 parsed_dict = json_repair.loads(content)
                 
-                # CRITICAL: Validate that json_repair returned a dict/list, not a string
+                # CRITICAL FIX: If json_repair returns a string, parse it again
+                if isinstance(parsed_dict, str):
+                    print(f"    json_repair returned string, attempting second parse...")
+                    try:
+                        parsed_dict = json.loads(parsed_dict)
+                    except json.JSONDecodeError:
+                        # Try json_repair again on the string
+                        parsed_dict = json_repair.loads(parsed_dict)
+                
+                # Validate that we now have a dict/list
                 if not isinstance(parsed_dict, (dict, list)):
-                    print(f"    ERROR: json_repair returned {type(parsed_dict)} instead of dict/list")
+                    print(f"    ERROR: Final result is {type(parsed_dict)} instead of dict/list")
+                    print(f"    Content preview: {str(parsed_dict)[:200]}")
                     print(f"    Full LLM response:\n{content}")
-                    raise ValueError(f"json_repair.loads() returned {type(parsed_dict)}, expected dict or list")
+                    raise ValueError(f"Could not parse to dict/list, got {type(parsed_dict)}")
                 
                 # Validate with Pydantic
                 validated_obj = pydantic_object(**parsed_dict)
                 print(f"    API Call #{api_call_count} successful")
                 return validated_obj.model_dump()
-            except (ValueError, TypeError, Exception) as je:
-                # json_repair.loads() can raise ValueError/TypeError in extreme cases
+            except (ValueError, TypeError, json.JSONDecodeError, Exception) as je:
                 # Log the error with raw content for debugging
                 print(f"    JSON Parse Error: {je}")
-                print(f"    Full LLM response (showing all):\n{content}")
+                print(f"    Full LLM response (first 500 chars):\n{content[:500]}")
                 raise  # Re-raise to trigger retry logic
 
         except Exception as e:
@@ -397,6 +378,10 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
                     return {}
             else:
                 print(f"    LLM/JSON ERROR: {e}")
+                if attempt < max_retries - 1:
+                    print(f"    Retrying... (Attempt {attempt + 2}/{max_retries})")
+                    time.sleep(2)
+                    continue
                 return {}
     
     return {}
@@ -453,16 +438,25 @@ Rules:
             try:
                 parsed_array = json_repair.loads(content)
                 
-                # CRITICAL: Validate that json_repair returned a list
+                # CRITICAL FIX: If json_repair returns a string, parse it again
+                if isinstance(parsed_array, str):
+                    print(f"    json_repair returned string, attempting second parse...")
+                    try:
+                        parsed_array = json.loads(parsed_array)
+                    except json.JSONDecodeError:
+                        # Try json_repair again on the string
+                        parsed_array = json_repair.loads(parsed_array)
+                
+                # Validate that we now have a list
                 if not isinstance(parsed_array, list):
                     print(f"    ERROR: Expected array but got {type(parsed_array)}")
-                    print(f"    Full LLM response:\n{content}")
+                    print(f"    Content preview: {str(parsed_array)[:200]}")
                     if isinstance(parsed_array, dict):
                         # LLM returned object instead of array - wrap it
                         print(f"    Wrapping single object in array")
                         parsed_array = [parsed_array]
                     else:
-                        raise ValueError(f"json_repair.loads() returned {type(parsed_array)}, expected list")
+                        raise ValueError(f"Could not parse to list, got {type(parsed_array)}")
                 
                 # Validate each item
                 validated_items = []
@@ -477,10 +471,9 @@ Rules:
                 print(f"    API Call #{api_call_count} successful - {len(validated_items)} items")
                 return validated_items
                 
-            except (ValueError, TypeError, Exception) as je:
-                # json_repair.loads() can raise ValueError/TypeError in extreme cases
+            except (ValueError, TypeError, json.JSONDecodeError, Exception) as je:
                 print(f"    JSON Parse Error: {je}")
-                print(f"    Full LLM response (showing all):\n{content}")
+                print(f"    Full LLM response (first 500 chars):\n{content[:500]}")
                 raise
 
         except Exception as e:
@@ -501,10 +494,13 @@ Rules:
                     return []
             else:
                 print(f"    Error: {e}")
+                if attempt < max_retries - 1:
+                    print(f"    Retrying... (Attempt {attempt + 2}/{max_retries})")
+                    time.sleep(2)
+                    continue
                 return []
     
     return []
-
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
 def check_google_fact_check_tool(query: str):
     """Tool: Queries Google Fact Check API with Error Handling."""
