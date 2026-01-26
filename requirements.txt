@@ -12,3 +12,4 @@ tavily-python
 pandas
 yt-dlp
 importlib-metadata>=7.0.0
+json-repair==0.*
