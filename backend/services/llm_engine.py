@@ -358,6 +358,14 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
             # (mixed quotes, nested quotes, trailing commas, markdown blocks, etc.)
             try:
                 parsed_dict = json_repair.loads(content)
+                
+                # CRITICAL: Validate that json_repair returned a dict/list, not a string
+                if not isinstance(parsed_dict, (dict, list)):
+                    print(f"    ERROR: json_repair returned {type(parsed_dict)} instead of dict/list")
+                    print(f"    Full LLM response:\n{content}")
+                    raise ValueError(f"json_repair.loads() returned {type(parsed_dict)}, expected dict or list")
+                
+                # Validate with Pydantic
                 validated_obj = pydantic_object(**parsed_dict)
                 print(f"    API Call #{api_call_count} successful")
                 return validated_obj.model_dump()
@@ -365,7 +373,7 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
                 # json_repair.loads() can raise ValueError/TypeError in extreme cases
                 # Log the error with raw content for debugging
                 print(f"    JSON Parse Error: {je}")
-                print(f"    Raw response (first 300 chars): {content[:300]}")
+                print(f"    Full LLM response (showing all):\n{content}")
                 raise  # Re-raise to trigger retry logic
 
         except Exception as e:
@@ -445,9 +453,16 @@ Rules:
             try:
                 parsed_array = json_repair.loads(content)
                 
+                # CRITICAL: Validate that json_repair returned a list
                 if not isinstance(parsed_array, list):
-                    print(f"    Expected array but got {type(parsed_array)}")
-                    return []
+                    print(f"    ERROR: Expected array but got {type(parsed_array)}")
+                    print(f"    Full LLM response:\n{content}")
+                    if isinstance(parsed_array, dict):
+                        # LLM returned object instead of array - wrap it
+                        print(f"    Wrapping single object in array")
+                        parsed_array = [parsed_array]
+                    else:
+                        raise ValueError(f"json_repair.loads() returned {type(parsed_array)}, expected list")
                 
                 # Validate each item
                 validated_items = []
@@ -465,7 +480,7 @@ Rules:
             except (ValueError, TypeError, Exception) as je:
                 # json_repair.loads() can raise ValueError/TypeError in extreme cases
                 print(f"    JSON Parse Error: {je}")
-                print(f"    Raw response (first 300 chars): {content[:300]}")
+                print(f"    Full LLM response (showing all):\n{content}")
                 raise
 
         except Exception as e:
