@@ -13,16 +13,23 @@ function TryPage() {
     const [history, setHistory] = useState([]);
     const [currentResult, setCurrentResult] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [progressMessage, setProgressMessage] = useState(""); // New: Dynamic progress
     const [inputText, setInputText] = useState("");
     const [fileName, setFileName] = useState("");
     const fileInputRef = useRef(null);
+    const pollingRef = useRef(null); // To cleanup polling on unmount
 
     // Load saved history when page loads
     useEffect(() => {
         // Clear old history for fresh start (remove this line later if you want to keep history)
-        localStorage.removeItem('truth_history');
+        // localStorage.removeItem('truth_history'); 
         const savedHistory = JSON.parse(localStorage.getItem('truth_history') || '[]');
         setHistory(savedHistory);
+
+        return () => {
+            // Cleanup polling on unmount
+            if (pollingRef.current) clearTimeout(pollingRef.current);
+        };
     }, []);
 
     // Clear everything and start fresh
@@ -30,6 +37,8 @@ function TryPage() {
         setCurrentResult(null);
         setInputText("");
         setFileName("");
+        setProgressMessage("");
+        if (pollingRef.current) clearTimeout(pollingRef.current);
     };
 
     // Store the selected file name
@@ -58,10 +67,55 @@ function TryPage() {
         }
     };
 
+    // Polling function
+    const pollJobStatus = async (jobId, titleForHistory) => {
+        try {
+            const statusResponse = await axios.get(`${API_URL}/api/status/${jobId}`);
+            const statusData = statusResponse.data;
+
+            console.log("Job Status:", statusData); // Debug log
+
+            if (statusData.status === 'complete') {
+                setLoading(false);
+                setProgressMessage("Complete!");
+
+                // Final result
+                const resultData = statusData.result;
+
+                // Save to history
+                const newHistoryItem = {
+                    id: Date.now(),
+                    title: titleForHistory,
+                    data: resultData
+                };
+
+                const updatedHistory = [newHistoryItem, ...history];
+                setHistory(updatedHistory);
+                localStorage.setItem('truth_history', JSON.stringify(updatedHistory));
+
+                setCurrentResult(resultData);
+
+            } else if (statusData.status === 'error') {
+                setLoading(false);
+                alert(`Analysis failed: ${statusData.error}`);
+            } else {
+                // Still processing
+                setProgressMessage(statusData.progress || "Processing...");
+                // Poll again in 3 seconds
+                pollingRef.current = setTimeout(() => pollJobStatus(jobId, titleForHistory), 3000);
+            }
+        } catch (err) {
+            console.error("Polling error:", err);
+            // Don't stop polling on transient network errors, just retry
+            pollingRef.current = setTimeout(() => pollJobStatus(jobId, titleForHistory), 5000);
+        }
+    };
+
     // Handle video file upload
     const processFileUpload = async (file) => {
         setLoading(true);
         setCurrentResult(null);
+        setProgressMessage("Uploading video...");
 
         const formData = new FormData();
         formData.append("file", file);
@@ -73,27 +127,15 @@ function TryPage() {
                 { headers: { "Content-Type": "multipart/form-data" } }
             );
 
-            const resultData = response.data;
+            // Start polling with job_id
+            const { job_id } = response.data;
+            setProgressMessage("Queued for analysis...");
+            pollJobStatus(job_id, file.name);
 
-            // Save to history
-            const newHistoryItem = {
-                id: Date.now(),
-                title: file.name,
-                data: resultData
-            };
-
-            const updatedHistory = [newHistoryItem, ...history];
-            setHistory(updatedHistory);
-            localStorage.setItem('truth_history', JSON.stringify(updatedHistory));
-
-            setCurrentResult(resultData);
         } catch (err) {
             console.error(err);
-            alert("Analysis failed. Check backend connection.");
-        } finally {
             setLoading(false);
-            setFileName("");
-            fileInputRef.current.value = "";
+            alert("Upload failed. Check backend connection.");
         }
     };
 
@@ -101,6 +143,7 @@ function TryPage() {
     const processTextAnalysis = async (text) => {
         setLoading(true);
         setCurrentResult(null);
+        setProgressMessage("Sending request...");
 
         try {
             const response = await axios.post(
@@ -108,25 +151,16 @@ function TryPage() {
                 { text: text }
             );
 
-            const resultData = response.data;
+            // Start polling with job_id
+            const { job_id } = response.data;
+            setProgressMessage("Queued for analysis...");
+            pollJobStatus(job_id, text.substring(0, 30) + "...");
 
-            // Save to history
-            const newHistoryItem = {
-                id: Date.now(),
-                title: text.substring(0, 50) + (text.length > 50 ? "..." : ""),
-                data: resultData
-            };
-
-            const updatedHistory = [newHistoryItem, ...history];
-            setHistory(updatedHistory);
-            localStorage.setItem('truth_history', JSON.stringify(updatedHistory));
-
-            setCurrentResult(resultData);
         } catch (err) {
             console.error(err);
-            alert("Analysis failed. Check backend connection.");
-        } finally {
             setLoading(false);
+            alert("Request failed. Check backend connection.");
+        } finally {
             setInputText("");
         }
     };
@@ -180,9 +214,9 @@ function TryPage() {
                         <div className="loading-container">
                             <div className="loading-spinner"></div>
                             <p className="loading-text">
-                                {fileName ? 'Transcribing video & ' : ''}Verification in progress...
+                                {progressMessage || "Processing..."}
                                 <br />
-                                <span className="loading-subtext">(This may take 1-2 minutes)</span>
+                                <span className="loading-subtext">(This may take a few minutes)</span>
                             </p>
                         </div>
                     )}
