@@ -10,7 +10,7 @@ load_dotenv()
 # 2. Initialize Tavily Client
 api_key = os.getenv("TAVILY_API_KEY")
 if not api_key:
-    print("⚠️ WARNING: TAVILY_API_KEY not found. Search capability will be disabled.")
+    print("WARNING: TAVILY_API_KEY not found. Search capability will be disabled.")
     tavily_client = None
 else:
     tavily_client = TavilyClient(api_key=api_key)
@@ -23,13 +23,14 @@ def search_web(query: str, intent: str = "general", max_retries: int = 3) -> lis
     Features:
     - Retry logic with exponential backoff (1s, 2s, 4s)
     - Increased timeout to 30 seconds
+    - Rate limiting to respect 100 RPM limit (0.65s delay)
     - Graceful error handling
     """
     if not tavily_client:
-        print("⚠️ Search disabled (No API Key)")
+        print("Search disabled (No API Key)")
         return []
 
-    print(f"🔎 Searching Web ({intent}): {query}")
+    print(f"Searching Web ({intent}): {query}")
 
     for attempt in range(max_retries):
         try:
@@ -49,7 +50,7 @@ def search_web(query: str, intent: str = "general", max_retries: int = 3) -> lis
                 if score < MIN_RELEVANCE_SCORE:
                     continue
 
-                # ✅ CRITICAL: Use 'title' and 'snippet' keys for compatibility
+                # CRITICAL: Use 'title' and 'snippet' keys for compatibility
                 clean_results.append({
                     "title": result.get("title", "Untitled"),
                     "url": result.get("url", ""),
@@ -57,22 +58,25 @@ def search_web(query: str, intent: str = "general", max_retries: int = 3) -> lis
                     "score": score,
                 })
 
-            print(f"   ✅ Found {len(clean_results)} relevant results")
+            print(f"   Found {len(clean_results)} relevant results")
             
-            # ✅ CRITICAL: Return a LIST, not a dict
+            # Rate limiting: Tavily free tier = 100 RPM
+            time.sleep(0.35)
+            
+            #  CRITICAL: Return a LIST, not a dict
             return clean_results
 
         except (ConnectionError, Timeout, ReadTimeout) as e:
             if attempt < max_retries - 1:
                 wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
-                print(f"   ⚠️ Search timeout, retrying in {wait_time}s... (Attempt {attempt + 1}/{max_retries})")
+                print(f"   Search timeout, retrying in {wait_time}s... (Attempt {attempt + 1}/{max_retries})")
                 time.sleep(wait_time)
             else:
-                print(f"   ❌ Search failed after {max_retries} attempts: {e}")
+                print(f"    Search failed after {max_retries} attempts: {e}")
                 return []  # Return empty list instead of crashing
         
         except Exception as e:
-            print(f"❌ Search Error: {e}")
+            print(f" Search Error: {e}")
             import traceback
             traceback.print_exc()
             return []
@@ -92,15 +96,15 @@ if __name__ == "__main__":
     )
     
     # Should be a list now
-    print(f"\n📊 Result type: {type(result)}")
-    print(f"📊 Result length: {len(result)}")
+    print(f"\nResult type: {type(result)}")
+    print(f"Result length: {len(result)}")
     
     if result:
-        print("\n✅ First result:")
+        print("\nFirst result:")
         for key, value in result[0].items():
             if key != "snippet":
                 print(f"   {key}: {value}")
             else:
                 print(f"   {key}: {value[:100]}...")
     else:
-        print("\n❌ No results returned")
+        print("\nNo results returned")

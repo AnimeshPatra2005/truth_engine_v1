@@ -568,7 +568,7 @@ def consensus_search_tool(claim: str):
             for untrusted in TRUSTED_DOMAINS["untrusted"]:
                 if untrusted in domain:
                     is_untrusted = True
-                    print(f"       ⚠️ Filtered out untrusted source: {domain}")
+                    print(f"       Filtered out untrusted source: {domain}")
                     break
             
             if not is_untrusted:
@@ -1272,7 +1272,7 @@ def three_tier_fact_check_node_batched(state: CourtroomState):
                 tier1_result = check_google_fact_check_tool(key_fact)
                 
                 if "MATCH:" in tier1_result:
-                    print(f"          ✓ TIER 1 VERIFIED")
+                    print(f"          TIER 1 VERIFIED")
                     verified_list.append(VerifiedEvidence(
                         source_url=source_url,
                         key_fact=key_fact,
@@ -1289,7 +1289,7 @@ def three_tier_fact_check_node_batched(state: CourtroomState):
                 
                 if domain_trust == "High" or is_suggested:
                     tier2_details = f"Domain Trust: {domain_trust}, Matches Suggested: {is_suggested}"
-                    print(f"          ✓ TIER 2 VERIFIED: {tier2_details}")
+                    print(f"          TIER 2 VERIFIED: {tier2_details}")
                     verified_list.append(VerifiedEvidence(
                         source_url=source_url,
                         key_fact=key_fact,
@@ -1361,7 +1361,7 @@ def three_tier_fact_check_node_batched(state: CourtroomState):
             batch_results = analyze_consensus_batch(batch, tier3_search_results)
             all_consensus_results.update(batch_results)
             
-            print(f"          ✓ Batch {batch_idx + 1} complete")
+            print(f"          Batch {batch_idx + 1} complete")
         
         # PASS 3: Update verified_claims with Tier 3 results
         print(f"\n       Applying Tier 3 results to claims...")

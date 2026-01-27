@@ -13,18 +13,18 @@ def run_full_pipeline(video_path: str):
     transcript = transcribe_video(video_path)
     
     if transcript.startswith("Error"):
-        print(f"❌ Transcription failed: {transcript}")
+        print(f"Transcription failed: {transcript}")
         return None
     
-    print(f"✅ Transcription: '{transcript[:150]}...'")
+    print(f"Transcription: '{transcript[:150]}...'")
     
     # Step 2: Run Agent System
     print("\n" + "="*60)
     print("STEP 2: FACT VERIFICATION")
     print("="*60)
-    print(f"🚀 ENGINE STARTING: '{transcript}'")
-    print(f"⏱️ Rate Limiting: {API_CALL_DELAY}s delay")
-    print(f"📊 Model: {MODEL_NAME}")
+    print(f"ENGINE STARTING: '{transcript}'")
+    print(f" Rate Limiting: {API_CALL_DELAY}s delay")
+    print(f"Model: {MODEL_NAME}")
     
     try:
         start_time = time.time()
@@ -34,21 +34,21 @@ def run_full_pipeline(video_path: str):
         v = result.get('final_verdict')
         
         print("\n" + "="*60)
-        print("🏆 FINAL VERDICT REPORT")
+        print("FINAL VERDICT REPORT")
         print("="*60)
-        print(f"⏱️ Total runtime: {elapsed / 60:.1f} minutes")
-        print(f"📊 Total API calls made: {api_call_count}")
+        print(f"Total runtime: {elapsed / 60:.1f} minutes")
+        print(f"Total API calls made: {api_call_count}")
         
         if v:
             verdict_val = v.get('verdict') if isinstance(v, dict) else v.verdict
             summary_val = v.get('summary') if isinstance(v, dict) else v.summary
             verifications = v.get('verifications') if isinstance(v, dict) else v.verifications
 
-            print(f"\n⚖️ JUDGEMENT: {verdict_val.upper()}")
-            print(f"📝 SUMMARY:\n{summary_val}")
+            print(f"\nJUDGEMENT: {verdict_val.upper()}")
+            print(f"SUMMARY:\n{summary_val}")
             
             if verifications:
-                print("\n🔍 DETAILED EVIDENCE LOG:")
+                print("\nDETAILED EVIDENCE LOG:")
                 for i, check in enumerate(verifications):
                     c_claim = check.get('claim') if isinstance(check, dict) else check.claim
                     c_status = check.get('status') if isinstance(check, dict) else check.status
@@ -56,21 +56,21 @@ def run_full_pipeline(video_path: str):
                     c_details = check.get('details') if isinstance(check, dict) else check.details
                     
                     print(f"\n   #{i+1} CLAIM: \"{c_claim}\"")
-                    print(f"      📍 METHOD:  {c_method}")
-                    print(f"      ✅ STATUS:  {c_status}")
-                    print(f"      📜 PROOF:   {c_details}")
+                    print(f"      METHOD:  {c_method}")
+                    print(f"      STATUS:  {c_status}")
+                    print(f"      PROOF:   {c_details}")
                     print("      " + "-"*30)
         else:
-            print("❌ No verdict generated.")
+            print("No verdict generated.")
             
         return result
 
     except Exception as e:
-        print(f"\n💥 SYSTEM FAILURE: {e}")
-        print(f"📊 API calls completed before failure: {api_call_count}")
+        print(f"\nSYSTEM FAILURE: {e}")
+        print(f"API calls completed before failure: {api_call_count}")
         return None
 
 if __name__ == "__main__":
     # Interactive mode
-    video_path = input("📹 Enter video file path: ").strip('"').strip("'")
+    video_path = input("Enter video file path: ").strip('"').strip("'")
     run_full_pipeline(video_path)

@@ -39,6 +39,9 @@ function TryPage() {
         setFileName("");
         setProgressMessage("");
         if (pollingRef.current) clearTimeout(pollingRef.current);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = ""; // Clear file input
+        }
     };
 
     // Store the selected file name
@@ -82,22 +85,25 @@ function TryPage() {
                 // Final result
                 const resultData = statusData.result;
 
-                // Save to history
+                // Save to history - FIXED: Use functional update to get latest history
                 const newHistoryItem = {
                     id: Date.now(),
                     title: titleForHistory,
                     data: resultData
                 };
 
-                const updatedHistory = [newHistoryItem, ...history];
-                setHistory(updatedHistory);
-                localStorage.setItem('truth_history', JSON.stringify(updatedHistory));
+                setHistory(prevHistory => {
+                    const updatedHistory = [newHistoryItem, ...prevHistory];
+                    localStorage.setItem('truth_history', JSON.stringify(updatedHistory));
+                    return updatedHistory;
+                });
 
                 setCurrentResult(resultData);
 
             } else if (statusData.status === 'error') {
                 setLoading(false);
-                alert(`Analysis failed: ${statusData.error}`);
+                setProgressMessage("");
+                alert(`Analysis failed: ${statusData.error || 'Unknown error occurred'}`);
             } else {
                 // Still processing
                 setProgressMessage(statusData.progress || "Processing...");
@@ -124,7 +130,10 @@ function TryPage() {
             const response = await axios.post(
                 `${API_URL}/api/upload-video`,
                 formData,
-                { headers: { "Content-Type": "multipart/form-data" } }
+                {
+                    headers: { "Content-Type": "multipart/form-data" },
+                    timeout: 60000 // 60 second timeout for upload
+                }
             );
 
             // Start polling with job_id
@@ -132,10 +141,24 @@ function TryPage() {
             setProgressMessage("Queued for analysis...");
             pollJobStatus(job_id, file.name);
 
+            // Clear file input after successful upload
+            if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+            }
+            setFileName("");
+
         } catch (err) {
-            console.error(err);
+            console.error("Upload error:", err);
             setLoading(false);
-            alert("Upload failed. Check backend connection.");
+            setProgressMessage("");
+
+            if (err.response) {
+                alert(`Upload failed: ${err.response.data.detail || err.response.statusText}`);
+            } else if (err.request) {
+                alert("Upload failed: No response from server. Check backend connection.");
+            } else {
+                alert(`Upload failed: ${err.message}`);
+            }
         }
     };
 
@@ -148,7 +171,8 @@ function TryPage() {
         try {
             const response = await axios.post(
                 `${API_URL}/api/analyze-text`,
-                { text: text }
+                { text: text },
+                { timeout: 30000 } // 30 second timeout
             );
 
             // Start polling with job_id
@@ -156,12 +180,21 @@ function TryPage() {
             setProgressMessage("Queued for analysis...");
             pollJobStatus(job_id, text.substring(0, 30) + "...");
 
-        } catch (err) {
-            console.error(err);
-            setLoading(false);
-            alert("Request failed. Check backend connection.");
-        } finally {
+            // Clear input after successful submission
             setInputText("");
+
+        } catch (err) {
+            console.error("Analysis error:", err);
+            setLoading(false);
+            setProgressMessage("");
+
+            if (err.response) {
+                alert(`Request failed: ${err.response.data.detail || err.response.statusText}`);
+            } else if (err.request) {
+                alert("Request failed: No response from server. Check backend connection.");
+            } else {
+                alert(`Request failed: ${err.message}`);
+            }
         }
     };
 

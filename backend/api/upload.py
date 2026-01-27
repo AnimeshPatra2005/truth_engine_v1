@@ -40,6 +40,13 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
             elapsed = time.time() - start_time
             job_results[job_id]["logs"].append(f"Transcription complete in {elapsed:.1f}s")
             job_results[job_id]["transcript"] = transcript
+            
+            # Clean up the uploaded file after transcription
+            try:
+                os.remove(file_path)
+                job_results[job_id]["logs"].append("Cleaned up uploaded file")
+            except Exception as cleanup_error:
+                print(f"Could not delete file {file_path}: {cleanup_error}")
 
         # Analysis Phase
         job_results[job_id]["progress"] = "Decomposing claims and verifying facts..."
@@ -49,40 +56,55 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
         result = analyze_text(transcript)
         
         # Store success result
+        # Frontend expects {verdict: ...} structure
         job_results[job_id]["status"] = "complete"
-        job_results[job_id]["result"] = result
+        job_results[job_id]["result"] = {"verdict": result}
         job_results[job_id]["progress"] = "Analysis complete"
         job_results[job_id]["logs"].append("Analysis finished successfully")
 
     except Exception as e:
         print(f"Job {job_id} failed: {e}")
+        import traceback
+        traceback.print_exc()  
+        
         job_results[job_id]["status"] = "error"
         job_results[job_id]["error"] = str(e)
         job_results[job_id]["progress"] = "Failed"
+        job_results[job_id]["logs"].append(f"Error: {str(e)}")
 
 
 @router.post("/upload-video")
 async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    file_path = f"{UPLOAD_DIR}/{file.filename}"
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # Generate job ID
+    # Generate job ID first
     job_id = str(uuid.uuid4())
     
-    # Initialize job state
+    # Create unique filename to avoid conflicts
+    file_extension = os.path.splitext(file.filename)[1]
+    unique_filename = f"{job_id}{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    
+    try:
+        # Save the uploaded file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+    finally:
+        file.file.close()  # Close the uploaded file (NOT await)
+    
+    # Initialize job state with all required fields
     job_results[job_id] = {
         "status": "processing",
         "progress": "Queued for processing...",
         "logs": ["File upload received"],
         "filename": file.filename,
         "transcript": None,
-        "result": None
+        "result": None,
+        "error": None
     }
     
-    # Start background task
-    background_tasks.add_task(run_analysis_background, job_id, file_path=file_path)
+    # Start background task - MUST pass transcript=None explicitly
+    background_tasks.add_task(run_analysis_background, job_id, transcript=None, file_path=file_path)
 
     return {
         "job_id": job_id,
@@ -90,6 +112,7 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
         "status": "processing",
         "message": "Video accepted. Analysis started in background."
     }
+
 
 @router.post("/analyze-text")
 async def analyze_text_only(background_tasks: BackgroundTasks, request: TextAnalysisRequest):
@@ -106,17 +129,19 @@ async def analyze_text_only(background_tasks: BackgroundTasks, request: TextAnal
         "progress": "Queued for processing...",
         "logs": ["Text request received"],
         "transcript": request.text,
-        "result": None
+        "result": None,
+        "error": None
     }
     
     # Start background task
-    background_tasks.add_task(run_analysis_background, job_id, transcript=request.text)
+    background_tasks.add_task(run_analysis_background, job_id, transcript=request.text, file_path=None)
 
     return {
         "job_id": job_id,
         "status": "processing",
         "message": "Text analysis started in background."
     }
+
 
 @router.get("/status/{job_id}")
 async def check_job_status(job_id: str):

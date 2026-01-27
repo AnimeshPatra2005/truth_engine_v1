@@ -26,9 +26,9 @@ app.include_router(upload_router, prefix="/api")
 
 @app.get("/")
 def health_check():
-    return {"status": "Truth Engine is Online 🚀"}
+    return {"status": "Truth Engine is Online"}
 
 
 if __name__ == "__main__":
-    print("\n🚀 Truth Engine - Starting Web Server...")
+    print("\nTruth Engine - Starting Web Server...")
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
