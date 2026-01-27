@@ -75,11 +75,20 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
 
 @router.post("/upload-video")
 async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    # Validate file type
+    allowed_extensions = {'.mp4', '.mp3', '.wav', '.m4a', '.webm', '.ogg', '.flac', '.avi', '.mov', '.mkv'}
+    file_extension = os.path.splitext(file.filename)[1].lower()
+    
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file format: {file_extension}. Supported formats: {', '.join(allowed_extensions)}"
+        )
+    
     # Generate job ID first
     job_id = str(uuid.uuid4())
     
     # Create unique filename to avoid conflicts
-    file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"{job_id}{file_extension}"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
@@ -87,6 +96,11 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
         # Save the uploaded file
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+        
+        # Validate file was saved correctly
+        if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+            raise Exception("File upload resulted in empty file")
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
     finally:

@@ -21,13 +21,13 @@ load_dotenv()
 # ==============================================================================
 # 1. SETUP
 # ==============================================================================
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3-flash-preview"
 API_CALL_DELAY = 2  # Reduced from 10s - using 2 API keys for load balancing
 MAX_RETRIES_ON_QUOTA = 3
 api_call_count = 0
 
 llm_analysis = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-3-flash-preview",
     google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"), 
     temperature=0
 )
