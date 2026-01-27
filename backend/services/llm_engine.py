@@ -27,13 +27,13 @@ MAX_RETRIES_ON_QUOTA = 3
 api_call_count = 0
 
 llm_analysis = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"), 
     temperature=0
 )
 
 llm_search = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),   
     temperature=0.2
 )
@@ -795,24 +795,24 @@ def claim_decomposer_node(state: CourtroomState):
            b) prosecutor_query - Query to find CONTRADICTING evidence:
               CRITICAL REQUIREMENTS:
               - Start with the claim keywords
-              - Add terms: "false OR debunked OR myth OR fake OR misleading OR contradiction OR disproven"
-              - ALWAYS include: "supporting documents OR supporting texts OR supporting evidence"
-              - This ensures Tavily returns actual evidence/documents, not just claims
+              - Add term: "(debunked)"
+              - ALWAYS include: "(supporting evidence)"
+              - Keep it short and focused
               
-              Format: "[claim keywords] AND (false OR debunked OR myth) AND (supporting documents OR supporting texts OR supporting evidence)"
+              Format: "[claim keywords] AND (debunked) AND (supporting evidence)"
               
-              Example: "firecrackers ancient Hindu scriptures AND (false OR debunked OR myth) AND (supporting documents OR supporting texts OR supporting evidence)"
+              Example: "firecrackers ancient Hindu scriptures AND (debunked) AND (supporting evidence)"
            
            c) defender_query - Query to find SUPPORTING evidence:
               CRITICAL REQUIREMENTS:
               - Start with the claim keywords
-              - Add terms: "proven OR confirmed OR verified OR true OR evidence OR citation OR proof"
-              - ALWAYS include: "supporting documents OR supporting texts OR supporting evidence"
-              - Write as if inviting supportive documents from Google
+              - Add term: "(verified)"
+              - ALWAYS include: "(supporting evidence)"
+              - Keep it short and focused
               
-              Format: "[claim keywords] AND (proven OR confirmed OR verified) AND (supporting documents OR supporting texts OR supporting evidence)"
+              Format: "[claim keywords] AND (verified) AND (supporting evidence)"
               
-              Example: "firecrackers ancient Hindu scriptures AND (proven OR confirmed OR verified) AND (supporting documents OR supporting texts OR supporting evidence)"
+              Example: "firecrackers ancient Hindu scriptures AND (verified) AND (supporting evidence)"
 
         OUTPUT FORMAT:
         Return a JSON OBJECT with this structure:
@@ -838,20 +838,20 @@ def claim_decomposer_node(state: CourtroomState):
               "id": 1,
               "claim_text": "MMR vaccine is linked to autism in children",
               "topic_category": "Health/Medicine",
-              "prosecutor_query": "MMR vaccine autism link AND (false OR debunked OR myth OR disproven) AND (supporting documents OR supporting texts OR supporting evidence OR research papers)",
-              "defender_query": "MMR vaccine autism link AND (proven OR confirmed OR verified OR true) AND (supporting documents OR supporting texts OR supporting evidence OR research papers)"
+              "prosecutor_query": "MMR vaccine autism link AND (debunked) AND (supporting evidence)",
+              "defender_query": "MMR vaccine autism link AND (verified) AND (supporting evidence)"
             }},
             {{
               "id": 2,
               "claim_text": "Andrew Wakefield's 1998 study proved vaccine-autism connection",
               "topic_category": "Health/Medicine",
-              "prosecutor_query": "Wakefield 1998 vaccine autism study AND (retracted OR false OR fraud OR debunked) AND (supporting documents OR supporting texts OR supporting evidence)",
-              "defender_query": "Wakefield 1998 vaccine autism study AND (proven OR confirmed OR verified) AND (supporting documents OR supporting texts OR supporting evidence)"
+              "prosecutor_query": "Wakefield 1998 vaccine autism study AND (debunked) AND (supporting evidence)",
+              "defender_query": "Wakefield 1998 vaccine autism study AND (verified) AND (supporting evidence)"
             }}
           ]
         }}
         
-        REMEMBER: ALWAYS include "supporting documents OR supporting texts OR supporting evidence" in BOTH queries!
+        REMEMBER: Keep queries short (under 15 words) and ALWAYS include "(supporting evidence)"!
         """
         
         data = safe_invoke_json(get_balanced_llm(), prompt, DecomposedClaims)
