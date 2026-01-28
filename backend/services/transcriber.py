@@ -1,18 +1,30 @@
 import whisper 
 import os 
 import time 
-#Loading model outsode the function so that whisper model gets loaded up when the sever starts hence not causing delay for the users
-print("Loading Whisper Model")
-try:
-    model=whisper.load_model("base")
-    print("Whisper Model loaded")
-except Exception as e:
-    print(f"Failed to load whisper:{e}")
-    model=None
+# Lazy loading global variable
+model = None
+
+def load_whisper_model():
+    """Explicitly load the Whisper model."""
+    global model
+    if model is None:
+        print("Loading Whisper Model...")
+        try:
+            model = whisper.load_model("base")
+            print("Whisper Model loaded successfully")
+        except Exception as e:
+            print(f"Failed to load whisper: {e}")
+            model = None
+    else:
+        print("Whisper Model already loaded")
 
 def transcribe_video(file_path:str)->str:
     if not model:
-        return "Error:Whisper model not loaded."
+        # Auto-load if not already loaded (fallback)
+        load_whisper_model()
+        if not model:
+            return "Error: Whisper model failed to load."
+
     if not os.path.exists(file_path):
         return f"Error: File not found at {file_path}"
     

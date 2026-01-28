@@ -2,9 +2,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.upload import router as upload_router
 from services.run_pipeline import run_full_pipeline
+from services.transcriber import load_whisper_model
 import uvicorn
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Load Machine Learning models on startup
+    load_whisper_model()
+    yield
+    # Clean up if needed
+    print("Shutting down...")
+
+app = FastAPI(lifespan=lifespan)
 
 # --- CORS Middleware (Fixed syntax) ---
 app.add_middleware(
