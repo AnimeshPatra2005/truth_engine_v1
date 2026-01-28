@@ -16,6 +16,7 @@ function TryPage() {
     const [progressMessage, setProgressMessage] = useState(""); // New: Dynamic progress
     const [inputText, setInputText] = useState("");
     const [fileName, setFileName] = useState("");
+    const [userQuery, setUserQuery] = useState(null); // Store the user's query/video to display
     const fileInputRef = useRef(null);
     const pollingRef = useRef(null); // To cleanup polling on unmount
 
@@ -37,6 +38,7 @@ function TryPage() {
         setCurrentResult(null);
         setInputText("");
         setFileName("");
+        setUserQuery(null);
         setProgressMessage("");
         if (pollingRef.current) clearTimeout(pollingRef.current);
         if (fileInputRef.current) {
@@ -119,6 +121,9 @@ function TryPage() {
 
     // Handle video file upload
     const processFileUpload = async (file) => {
+        // Display the video file in chat area
+        setUserQuery({ type: 'video', content: file.name });
+
         setLoading(true);
         setCurrentResult(null);
         setProgressMessage("Uploading video...");
@@ -164,6 +169,9 @@ function TryPage() {
 
     // Handle text-only analysis
     const processTextAnalysis = async (text) => {
+        // Display the text query in chat area
+        setUserQuery({ type: 'text', content: text });
+
         setLoading(true);
         setCurrentResult(null);
         setProgressMessage("Sending request...");
@@ -228,7 +236,7 @@ function TryPage() {
             <main className="main-content">
                 <div className="chat-scroll-area">
                     {/* Show welcome screen when idle */}
-                    {!currentResult && !loading && (
+                    {!currentResult && !loading && !userQuery && (
                         <div className="welcome-screen">
                             <h1>Truth Engine</h1>
                             <p className="welcome-text">
@@ -238,6 +246,22 @@ function TryPage() {
                                 <span className="suggestion-pill">Verify political speeches</span>
                                 <span className="suggestion-pill">Check news reports</span>
                                 <span className="suggestion-pill">Analyze documentary claims</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Show user's query/video as a message bubble */}
+                    {userQuery && (
+                        <div className="user-message-container">
+                            <div className="user-message">
+                                {userQuery.type === 'video' ? (
+                                    <>
+                                        <FaFileUpload style={{ marginRight: '8px' }} />
+                                        {userQuery.content}
+                                    </>
+                                ) : (
+                                    userQuery.content
+                                )}
                             </div>
                         </div>
                     )}
