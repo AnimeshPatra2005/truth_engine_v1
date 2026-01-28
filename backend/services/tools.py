@@ -37,7 +37,7 @@ def search_web(query: str, intent: str = "general", max_retries: int = 3) -> lis
             response = tavily_client.search(
                 query=query,
                 search_depth="advanced",
-                max_results=5,
+                max_results=10,  # Increased to 10 for better consensus checks
                 timeout=30  # Increased from default 10s to 30s
             )
 
