@@ -22,30 +22,70 @@ load_dotenv()
 # 1. SETUP
 # ==============================================================================
 MODEL_NAME = "gemini-3-flash-preview"
-API_CALL_DELAY = 2  # Reduced from 10s - using 2 API keys for load balancing
+API_CALL_DELAY = 2  # Reduced from 10s - using 3 specialized models
 MAX_RETRIES_ON_QUOTA = 3
 api_call_count = 0
 
-llm_analysis = ChatGoogleGenerativeAI(
+# Specialized models for different reasoning complexity
+# Low thinking: Fast, for simple tasks (decomposition, query generation)
+llm_decomposer = ChatGoogleGenerativeAI(
     model="gemini-3-flash-preview",
     google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"), 
+    temperature=0,
+    thinking_level = "low"
+)
+
+# Medium thinking: Balanced, for analysis tasks (consensus, evidence extraction)
+llm_analyzer = ChatGoogleGenerativeAI(
+    model="gemini-3-flash-preview",
+    google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),   
+    temperature=0,
+    thinking_level = "medium"
+)
+
+# High thinking: Deep reasoning for final verdict
+llm_judge = ChatGoogleGenerativeAI(
+    model="gemini-3-flash-preview",
+    google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"),
+    temperature=0,
+    thinking_level = "high"
+)
+
+# Fallback model: Very stable, generous free tier limits
+llm_fallback = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"),
     temperature=0
 )
 
-llm_search = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),   
-    temperature=0.2
-)
-
-# Load Balancing Helper
-def get_balanced_llm():
+# Load Balancing Helper - now returns appropriate model based on task
+def get_llm_for_task(task_type: str = "general"):
     """
-    Alternates between llm_analysis and llm_search for load balancing.
-    Even API calls use llm_analysis, odd calls use llm_search.
+    Returns specialized LLM based on task complexity.
+    
+    Args:
+        task_type: One of "decompose", "analyze", "judge", or "general"
+    
+    Returns:
+        Appropriate ChatGoogleGenerativeAI instance
     """
     global api_call_count
-    return llm_analysis if (api_call_count % 2 == 0) else llm_search
+    
+    if task_type == "decompose":
+        return llm_decomposer  # Low thinking
+    elif task_type == "analyze":
+        return llm_analyzer  # Medium thinking
+    elif task_type == "judge":
+        return llm_judge  # High thinking
+    else:
+        # For backward compatibility, alternate between analyzer and decomposer
+        api_call_count += 1
+        return llm_analyzer if (api_call_count % 2 == 0) else llm_decomposer
+
+# Legacy function for backward compatibility
+def get_balanced_llm():
+    """Legacy function - use get_llm_for_task() instead."""
+    return get_llm_for_task("general")
 
 
 # ==============================================================================
@@ -360,14 +400,28 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
         except Exception as e:
             error_str = str(e)
             
+            # Log the FULL error for debugging
+            print(f"    ⚠️ API ERROR: {error_str[:200]}")
+            
             if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
+                print(f"    QUOTA EXHAUSTED (Attempt {attempt + 1}/{max_retries})")
+                
+                # FALLBACK LOGIC: Switch to llm_fallback if primary model fails
+                if model != llm_fallback:
+                    print(f"    🔄 SWITCHING TO FALLBACK MODEL (Gemini 1.5 Flash)...")
+                    try:
+                        # Recursive call with fallback model
+                        # Decrease retries to avoid infinite loops
+                        return safe_invoke_json(llm_fallback, prompt_text, pydantic_object, max_retries=2)
+                    except Exception as fallback_error:
+                        print(f"    ❌ Fallback model also failed: {fallback_error}")
+                        # Fall through to normal retry logic
+
                 retry_match = re.search(r'retry in (\d+\.?\d*)s', error_str)
                 if retry_match:
                     retry_delay = float(retry_match.group(1)) + 2
                 else:
-                    retry_delay = 60
-                
-                print(f"    QUOTA EXHAUSTED (Attempt {attempt + 1}/{max_retries})")
+                    retry_delay = 30 # Reduced from 60s
                 
                 if attempt < max_retries - 1:
                     print(f"    Waiting {retry_delay:.1f} seconds before retry...")
@@ -663,7 +717,8 @@ def analyze_consensus_with_gemini(claim: str, search_results: list) -> dict:
         confidence: Literal["High", "Medium", "Low"] = Field(description="Confidence level based on agreement percentage")
         reasoning: str = Field(description="Brief explanation of consensus pattern")
     
-    analysis = safe_invoke_json(get_balanced_llm(), prompt, ConsensusAnalysis)
+    # Use MEDIUM thinking for consensus pattern recognition
+    analysis = safe_invoke_json(get_llm_for_task("analyze"), prompt, ConsensusAnalysis)
     
     if not analysis:
         return {
@@ -682,7 +737,7 @@ def analyze_consensus_with_gemini(claim: str, search_results: list) -> dict:
 
 class ClaimUnit(BaseModel):
     id: int
-    claim_text: str = Field(description="The specific claim statement")
+    claim_text: str
     topic_category: str = Field(description="Topic category for this claim")
     prosecutor_query: str = Field(description="Search query to find evidence DISPROVING this claim with 'supporting documents' phrase")
     defender_query: str = Field(description="Search query to find evidence SUPPORTING this claim with 'supporting documents' phrase")
@@ -854,7 +909,8 @@ def claim_decomposer_node(state: CourtroomState):
         REMEMBER: Keep queries short (under 15 words) and ALWAYS include "(supporting evidence)"!
         """
         
-        data = safe_invoke_json(get_balanced_llm(), prompt, DecomposedClaims)
+        # Use LOW thinking for fast claim extraction
+        data = safe_invoke_json(get_llm_for_task("decompose"), prompt, DecomposedClaims)
         
         if not data:
             raise ValueError("Decomposition returned empty data")
@@ -1050,8 +1106,8 @@ def evidence_extraction_node(state: CourtroomState):
         
         CRITICAL: Each fact must be NON-OVERLAPPING and INFORMATION-RICH. No general claims allowed.
         """
-        
-        evidence_data = safe_invoke_json(get_balanced_llm(), extract_prompt, ClaimEvidence)
+        # Use LOW thinking for structured evidence extraction
+        evidence_data = safe_invoke_json(get_llm_for_task("decompose"), extract_prompt, ClaimEvidence)
         
         if evidence_data:
             claim_evidence = ClaimEvidence(**evidence_data)
@@ -1063,13 +1119,15 @@ def evidence_extraction_node(state: CourtroomState):
             for i, fact in enumerate(claim_evidence.prosecutor_facts, 1):
                 fact_obj = fact if isinstance(fact, dict) else fact
                 fact_text = fact_obj.get('key_fact') if isinstance(fact_obj, dict) else fact_obj.key_fact
-                print(f"             {i}. {fact_text[:100]}...")
+                source_url = fact_obj.get('source_url') if isinstance(fact_obj, dict) else fact_obj.source_url
+                print(f"             {i}. [{source_url[:30]}...] {fact_text[:100]}...")
             
             print(f"          Extracted {len(claim_evidence.defender_facts)} defender facts")
             for i, fact in enumerate(claim_evidence.defender_facts, 1):
                 fact_obj = fact if isinstance(fact, dict) else fact
                 fact_text = fact_obj.get('key_fact') if isinstance(fact_obj, dict) else fact_obj.key_fact
-                print(f"             {i}. {fact_text[:100]}...")
+                source_url = fact_obj.get('source_url') if isinstance(fact_obj, dict) else fact_obj.source_url
+                print(f"             {i}. [{source_url[:30]}...] {fact_text[:100]}...")
         else:
             print(f"          Evidence extraction failed for claim {claim.id}")
             all_claim_evidence.append(ClaimEvidence(
@@ -1190,8 +1248,8 @@ def analyze_consensus_batch(evidence_list: list, search_results_map: dict) -> di
         confidence: Literal["High", "Medium", "Low"]
         reasoning: str
     
-    # Use llm_search for consensus analysis
-    analyses = safe_invoke_json_array(llm_search, prompt, SingleConsensusAnalysis)
+    # Use MEDIUM thinking for consensus pattern recognition
+    analyses = safe_invoke_json_array(get_llm_for_task("analyze"), prompt, SingleConsensusAnalysis)
     
     if not analyses:
         # Fallback: return empty analysis for each evidence
@@ -1840,7 +1898,8 @@ def final_analysis_node(state: CourtroomState):
     CRITICAL: Include ALL claims in claim_analyses array. Each claim MUST have a detailed analysis.
     """
 
-    final_verdict_data = safe_invoke_json(get_balanced_llm(), analysis_prompt, FinalVerdict)
+    # Use HIGH thinking for deep reasoning on final verdict
+    final_verdict_data = safe_invoke_json(get_llm_for_task("judge"), analysis_prompt, FinalVerdict)
 
     if final_verdict_data:
         # Ensure verified evidence is properly attached to each claim analysis
