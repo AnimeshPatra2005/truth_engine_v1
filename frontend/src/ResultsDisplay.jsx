@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaInfoCircle, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaInfoCircle, FaChevronDown, FaChevronUp, FaQuestionCircle } from 'react-icons/fa';
 import './ResultsDisplay.css';
 
 function ResultsDisplay({ verdict }) {
@@ -9,15 +9,27 @@ function ResultsDisplay({ verdict }) {
     const getVerdictStyle = (status) => {
         const statusLower = status?.toLowerCase() || '';
 
-        if (statusLower.includes('verified') || statusLower.includes('true') && !statusLower.includes('partially')) {
+        // Check for True/Verified (green checkmark)
+        if ((statusLower.includes('true') && !statusLower.includes('partially')) || (statusLower.includes('verified') && !statusLower.includes('unverified'))) {
             return { color: '#10b981', icon: <FaCheckCircle />, label: 'VERIFIED' };
-        } else if (statusLower.includes('false') || statusLower.includes('debunked')) {
-            return { color: '#ef4444', icon: <FaTimesCircle />, label: 'DEBUNKED' };
-        } else if (statusLower.includes('unclear') || statusLower.includes('unverified')) {
-            return { color: '#eab308', icon: <FaExclamationCircle />, label: 'UNCLEAR' };
-        } else if (statusLower.includes('partially')) {
-            return { color: '#f97316', icon: <FaInfoCircle />, label: 'PARTIALLY TRUE' };
         }
+        // Check for False/Debunked (red cross)
+        else if (statusLower.includes('false') || statusLower.includes('debunked')) {
+            return { color: '#ef4444', icon: <FaTimesCircle />, label: 'FALSE' };
+        }
+        // Check for Unverified (yellow question mark)
+        else if (statusLower.includes('unverified')) {
+            return { color: '#eab308', icon: <FaQuestionCircle />, label: 'UNVERIFIED' };
+        }
+        // Check for Partially True (orange exclamation)
+        else if (statusLower.includes('partially')) {
+            return { color: '#f97316', icon: <FaExclamationCircle />, label: 'PARTIALLY TRUE' };
+        }
+        // Check for Unclear (orange exclamation)
+        else if (statusLower.includes('unclear')) {
+            return { color: '#f97316', icon: <FaExclamationCircle />, label: 'UNCLEAR' };
+        }
+        // Default fallback
         return { color: '#6b7280', icon: <FaInfoCircle />, label: 'UNKNOWN' };
     };
 

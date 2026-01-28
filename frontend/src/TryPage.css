@@ -68,9 +68,43 @@
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.2s;
+    position: relative;
+}
+
+.history-icon {
+    flex-shrink: 0;
+}
+
+.history-title {
+    flex: 1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.delete-history-btn {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 4px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    opacity: 0;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.history-item:hover .delete-history-btn {
+    opacity: 1;
+}
+
+.delete-history-btn:hover {
+    background: rgba(255, 59, 48, 0.2);
+    color: #ff3b30;
 }
 
 .history-item:hover {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { FaPlus, FaHistory, FaFileUpload, FaPaperPlane, FaRobot, FaHome } from 'react-icons/fa';
+import { FaPlus, FaHistory, FaFileUpload, FaPaperPlane, FaRobot, FaHome, FaTrash } from 'react-icons/fa';
 import './TryPage.css';
 import ResultsDisplay from './ResultsDisplay';
 
@@ -57,6 +57,14 @@ function TryPage() {
     // Load a previous analysis from history
     const loadHistoryItem = (item) => {
         setCurrentResult(item.data);
+    };
+
+    // Delete a specific history item
+    const deleteHistoryItem = (e, itemId) => {
+        e.stopPropagation(); // Prevent triggering loadHistoryItem
+        const updatedHistory = history.filter(item => item.id !== itemId);
+        setHistory(updatedHistory);
+        localStorage.setItem('truth_history', JSON.stringify(updatedHistory));
     };
 
     // Main handler - decides whether to upload video or analyze text
@@ -226,7 +234,15 @@ function TryPage() {
                             className="history-item"
                             onClick={() => loadHistoryItem(item)}
                         >
-                            <FaHistory /> {item.title}
+                            <FaHistory className="history-icon" />
+                            <span className="history-title">{item.title}</span>
+                            <button
+                                className="delete-history-btn"
+                                onClick={(e) => deleteHistoryItem(e, item.id)}
+                                title="Delete"
+                            >
+                                <FaTrash />
+                            </button>
                         </div>
                     ))}
                 </div>
