@@ -16,26 +16,31 @@ from ..llm_setup import get_llm_for_task
 
 
 def _build_evidence_text(prosecutor_results: list, defender_results: list) -> str:
-    """Build combined evidence text from search results."""
-    all_evidence_text = ""
+    """Build combined evidence text from search results.
     
+    NOTE: We intentionally DO NOT label sources as prosecutor/defender.
+    The LLM should analyze each source's content and decide whether it
+    contradicts or supports the claim - regardless of which search query
+    returned it. A "defender query" might return contradicting evidence!
+    """
+    # Combine all results into a single unlabeled pool
+    all_results = []
     if prosecutor_results:
-        all_evidence_text += "\n[PROSECUTOR SOURCES - Contradicting the claim]\n"
-        for i, result in enumerate(prosecutor_results):
-            all_evidence_text += f"\nSource {i+1}:\n"
-            all_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
-            all_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
-            all_evidence_text += f"Content: {result.get('snippet', '')[:2000]}\n"
-            all_evidence_text += "-" * 60 + "\n"
-    
+        all_results.extend(prosecutor_results)
     if defender_results:
-        all_evidence_text += "\n[DEFENDER SOURCES - Supporting the claim]\n"
-        for i, result in enumerate(defender_results):
-            all_evidence_text += f"\nSource {i+1}:\n"
-            all_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
-            all_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
-            all_evidence_text += f"Content: {result.get('snippet', '')[:2000]}\n"
-            all_evidence_text += "-" * 60 + "\n"
+        all_results.extend(defender_results)
+    
+    if not all_results:
+        return ""
+    
+    all_evidence_text = "\n[SEARCH RESULTS - Analyze each source to determine if it CONTRADICTS or SUPPORTS the claim]\n"
+    
+    for i, result in enumerate(all_results):
+        all_evidence_text += f"\nSource {i+1}:\n"
+        all_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
+        all_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
+        all_evidence_text += f"Content: {result.get('snippet', '')[:2000]}\n"
+        all_evidence_text += "-" * 60 + "\n"
     
     return all_evidence_text
 
@@ -44,36 +49,52 @@ def _get_extraction_prompt(claim, all_evidence_text: str, implication: str, incl
     """Generate extraction prompt - with or without extra evidence."""
     
     base_rules = """
+        YOUR TASK:
+        Analyze ALL provided search results and extract facts that either CONTRADICT or SUPPORT the claim.
+        You must determine the stance of each fact based on its CONTENT, not which search returned it.
+        
         EXTRACTION RULES:
-        1. Extract EXACTLY 2 PROSECUTOR facts (contradicting the claim) from prosecutor sources
-        2. Extract EXACTLY 2 DEFENDER facts (supporting the claim) from defender sources
-        3. Each fact MUST contain SPECIFIC, CHECKABLE information:
+        1. Extract UP TO 2 PROSECUTOR facts - facts that CONTRADICT or cast doubt on the claim
+        2. Extract UP TO 2 DEFENDER facts - facts that SUPPORT or validate the claim
+        3. Analyze EACH source carefully - a source may contain BOTH contradicting AND supporting facts
+        
+        CRITICAL - QUALITY OVER QUANTITY:
+        - If NO sources contain relevant CONTRADICTING evidence, return EMPTY prosecutor_facts: []
+        - If NO sources contain relevant SUPPORTING evidence, return EMPTY defender_facts: []
+        - Do NOT fabricate, stretch, or force-fit evidence that doesn't genuinely match the side
+        - It is PERFECTLY ACCEPTABLE to return 0, 1, or 2 facts per side based on what actually exists
+        - A one-sided result (only support OR only contradiction) is a valid outcome
+        
+        4. Each fact MUST contain SPECIFIC, CHECKABLE information:
            - Numbers, percentages, statistics
            - Dates, years, time periods
            - Names of people, organizations, studies
            - Citations to research, court cases, laws, scriptures
            - Direct quotes from authorities
         
-        4. NO OVERLAP between facts - each fact must be unique and information-rich
-        5. NO vague statements like:
+        5. NO OVERLAP between facts - each fact must be unique and information-rich
+        6. NO vague statements like:
             "Experts disagree"
             "Studies show"
             "According to sources"
             "It is believed"
         
-        6. ONLY concrete facts like:
+        7. ONLY concrete facts like:
             "CDC study of 1.2M children found no MMR-autism link (JAMA, 2015)"
             "Wakefield's 1998 paper retracted by The Lancet in 2010 for data fraud"
             "Supreme Court ruling 2018/SC/1234 banned firecrackers in Delhi NCR"
         
-        7. For EACH fact, suggest 3-5 trusted domains for verification based on the claim category:
+        8. For EACH fact you extract, suggest 3-5 trusted domains for verification based on the claim category:
            - Science/Technology: nature.com, science.org, arxiv.org, ieee.org, nasa.gov
            - Law/Policy (India): indiankanoon.org, supremecourtofindia.nic.in, livelaw.in
            - Health/Medicine: who.int, cdc.gov, nih.gov, pubmed.ncbi.nlm.nih.gov
            - News/Viral: reuters.com, apnews.com, bbc.com, snopes.com
            - General: britannica.com, wikipedia.org, reuters.com, bbc.com
         
-        8. If insufficient evidence exists (less than 2 facts per side), extract what's available
+        9. SKIP extraction entirely for a side if:
+           - No source genuinely contradicts/supports the claim
+           - Sources only contain opinions without verifiable facts
+           - Evidence is too weak or tangential to be useful
     """
     
     if include_extras:
@@ -157,7 +178,11 @@ def _get_extraction_prompt(claim, all_evidence_text: str, implication: str, incl
         {extra_rules}
         {output_format}
         
-        CRITICAL: Each fact must be NON-OVERLAPPING and INFORMATION-RICH. No general claims allowed.
+        CRITICAL: 
+        - QUALITY over QUANTITY - empty arrays are BETTER than garbage evidence
+        - Each fact must be NON-OVERLAPPING and INFORMATION-RICH
+        - If sources don't genuinely support a side, return [] for that side
+        - No fabricated, stretched, or force-fit evidence allowed
     """
     
     return prompt
