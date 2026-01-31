@@ -395,3 +395,143 @@
         justify-content: center;
     }
 }
+
+/* Citation Links */
+.citation-link {
+    font-size: 0.75em;
+    vertical-align: super;
+    color: #60a5fa;
+    text-decoration: none;
+    font-weight: 700;
+    margin-left: 0.25rem;
+    margin-right: 0.5rem;
+    transition: color 0.2s ease;
+}
+
+.citation-link:hover {
+    color: #93c5fd;
+    text-decoration: underline;
+}
+
+/* Inline Trust Badge */
+.trust-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-left: 0.25rem;
+}
+
+.trust-high {
+    background: #10b981;
+    color: white;
+}
+
+.trust-medium {
+    background: #eab308;
+    color: black;
+}
+
+.trust-low {
+    background: #ef4444;
+    color: white;
+}
+
+.trust-unknown {
+    background: #6b7280;
+    color: white;
+}
+
+/* Sources Toggle */
+.sources-toggle-container {
+    margin-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 1rem;
+}
+
+.sources-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sources-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.sources-toggle-btn svg {
+    font-size: 0.875rem;
+}
+
+.sources-list {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.source-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.source-index {
+    font-weight: 700;
+    color: #60a5fa;
+    min-width: 1.5rem;
+}
+
+.source-link {
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.source-link:hover {
+    color: #60a5fa;
+    text-decoration: underline;
+}
+
+.trust-badge-small {
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-left: auto;
+}
+
+/* Evidence group colors */
+.evidence-group.contradicting {
+    border-left: 3px solid #ef4444;
+}
+
+.evidence-group.supporting {
+    border-left: 3px solid #10b981;
+}
+
+.evidence-group.contradicting .evidence-group-title {
+    color: #ef4444;
+}
+
+.evidence-group.supporting .evidence-group-title {
+    color: #10b981;
+}

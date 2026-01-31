@@ -107,18 +107,21 @@ def final_analysis_node(state: CourtroomState):
 
     FOR EACH CLAIM:
     1. Determine status: "Verified", "Debunked", or "Unclear"
-       - "Verified" if defender evidence is stronger, from high-trust sources
-       - "Debunked" if prosecutor evidence is stronger, from high-trust sources
+       - "Verified" if supporting evidence is stronger and from high-trust sources
+       - "Debunked" if contradicting evidence is stronger and from high-trust sources
        - "Unclear" if evidence is balanced, low-trust, or insufficient
 
-    2. Write a DETAILED PARAGRAPH (150-250 words) that:
-       - States verdict clearly in opening sentence
-       - Explains reasoning behind verdict
-       - References SPECIFIC evidence from both sides
-       - Compares quality and credibility of sources
-       - Addresses trust scores and verification methods
-       - Includes specific facts, numbers, dates, citations from evidence
-       - Makes reasoning crystal clear
+    2. Write your analysis in 2-4 SHORT PARAGRAPHS (total 150-250 words):
+       - FIRST paragraph: State verdict clearly and explain main reasoning
+       - SECOND paragraph: Cite specific supporting evidence with source names
+       - THIRD paragraph (if needed): Cite contradicting evidence with source names
+       - FOURTH paragraph (if needed): Final weighing of evidence quality
+       
+       IMPORTANT RULES:
+       - DO NOT use "Claim #1", "Evidence #1", "Prosecutor Evidence #2" etc.
+       - Instead, describe evidence naturally: "According to Wikipedia...", "A BBC report states..."
+       - Mention source names (Wikipedia, BBC, WHO) inline, not numbered references
+       - Keep each paragraph 2-4 sentences max for readability
 
     FOR OVERALL IMPLICATION:
     1. Determine overall verdict:
@@ -127,27 +130,25 @@ def final_analysis_node(state: CourtroomState):
        - "Partially True" if some claims verified, others debunked
        - "Unverified" if most claims unclear or insufficient evidence
 
-    2. Write LONG DETAILED PARAGRAPH (200-300 words) that:
-       - Opens with clear overall verdict statement
-       - Explains HOW implication relates to individual claims
-       - Connects dots between verified/debunked/unclear claims
-       - Addresses SELECTIVE USE OF FACTS if applicable
-       - Explains what evidence collectively reveals
-       - Discusses correlation vs causation where relevant
-       - Provides comprehensive, nuanced conclusion
-       - References specific claims by number
+    2. Write your analysis in 2-4 SHORT PARAGRAPHS (total 200-300 words):
+       - FIRST paragraph: State overall verdict and core reasoning
+       - SECOND paragraph: Summarize what the supporting evidence shows
+       - THIRD paragraph: Summarize what the contradicting evidence shows
+       - FOURTH paragraph: Final conclusion on whether the implication holds
+       
+       DO NOT use "Claim #1 is verified" - instead say "The claim about X was verified..."
 
     OUTPUT FORMAT:
     Return JSON object with this structure:
     {{
       "overall_verdict": "True" | "False" | "Partially True" | "Unverified",
-      "implication_connection": "Your 200-300 word comprehensive paragraph...",
+      "implication_connection": "Your 2-4 paragraph analysis (200-300 words total)...",
       "claim_analyses": [
         {{
           "claim_id": 1,
           "claim_text": "The claim text",
           "status": "Verified" | "Debunked" | "Unclear",
-          "detailed_paragraph": "Your 150-250 word analysis...",
+          "detailed_paragraph": "Your 2-4 paragraph analysis (150-250 words total)...",
           "prosecutor_evidence": [...],
           "defender_evidence": [...]
         }}
@@ -156,10 +157,10 @@ def final_analysis_node(state: CourtroomState):
 
     WRITING STYLE:
     - Professional, balanced, objective
-    - Reference specific evidence with sources
-    - Compare evidence quality explicitly
-    - Explain trust scores and verification tiers
-    - Make connections explicit and clear
+    - Cite sources by NAME (Wikipedia, BBC, WHO), not by number
+    - Never use internal jargon (Tier 1, Tier 2, prosecutor, defender)
+    - Write for a general audience, not technical reviewers
+    - Each paragraph should be scannable (2-4 sentences)
 
     CRITICAL: Include ALL claims in claim_analyses array. Each claim MUST have a detailed analysis.
     """
@@ -216,6 +217,17 @@ def final_analysis_node(state: CourtroomState):
 # PRETTY PRINTER FOR RESULTS
 # ==============================================================================
 
+def _get_trust_indicator(trust: str) -> str:
+    """Return a colored indicator for trust level."""
+    trust_lower = trust.lower() if trust else "unknown"
+    if trust_lower == "high":
+        return "[HIGH ✓]"
+    elif trust_lower == "medium":
+        return "[MEDIUM ~]"
+    elif trust_lower == "low":
+        return "[LOW ⚠]"
+    return "[UNKNOWN]"
+
 def print_verdict_report(verdict_dict):
     """Pretty print the final verdict"""
     if not verdict_dict:
@@ -235,7 +247,7 @@ def print_verdict_report(verdict_dict):
 
     # Implication Connection
     connection = v.get('implication_connection') if isinstance(v, dict) else v.implication_connection
-    print(f"\nIMPLICATION ANALYSIS:\n")
+    print(f"\nANALYSIS:\n")
     print(connection)
 
     # Individual Claim Analyses
@@ -243,11 +255,10 @@ def print_verdict_report(verdict_dict):
 
     if analyses:
         print("\n" + "="*80)
-        print("DETAILED CLAIM-BY-CLAIM ANALYSIS")
+        print("CLAIM-BY-CLAIM BREAKDOWN")
         print("="*80)
         
         for analysis in analyses:
-            a_id = analysis.get('claim_id') if isinstance(analysis, dict) else analysis.claim_id
             a_text = analysis.get('claim_text') if isinstance(analysis, dict) else analysis.claim_text
             a_status = analysis.get('status') if isinstance(analysis, dict) else analysis.status
             a_para = analysis.get('detailed_paragraph') if isinstance(analysis, dict) else analysis.detailed_paragraph
@@ -255,44 +266,45 @@ def print_verdict_report(verdict_dict):
             a_def = analysis.get('defender_evidence') if isinstance(analysis, dict) else analysis.defender_evidence
             
             print(f"\n{'='*80}")
-            print(f"CLAIM #{a_id}: {a_text}")
-            print(f"STATUS: {a_status}")
+            print(f"CLAIM: {a_text}")
+            print(f"STATUS: {a_status.upper()}")
             print(f"{'='*80}")
             
             print(f"\n{a_para}")
             
-            # Prosecutor Facts
-            if a_pros:
-                print(f"\nPROSECUTOR FACTS (Contradicting):")
-                for i, fact in enumerate(a_pros, 1):
-                    f_url = fact.get('source_url') if isinstance(fact, dict) else fact.source_url
-                    f_key = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
-                    f_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
-                    f_method = fact.get('verification_method') if isinstance(fact, dict) else fact.verification_method
-                    f_details = fact.get('verification_details') if isinstance(fact, dict) else fact.verification_details
-                    
-                    print(f"\n   {i}. {f_key}")
-                    print(f"       Source: {f_url}")
-                    print(f"       Trust: {f_trust}")
-                    print(f"       Verification: {f_method}")
-                    print(f"       Details: {f_details}")
-            else:
-                print(f"\nPROSECUTOR FACTS: No contradicting evidence found")
+            # Build sources list with indices
+            all_sources = []
             
-            # Defender Facts
-            if a_def:
-                print(f"\nDEFENDER FACTS (Supporting):")
-                for i, fact in enumerate(a_def, 1):
+            # Contradicting Evidence
+            if a_pros:
+                print(f"\n📛 Contradicting Evidence:")
+                for fact in a_pros:
                     f_url = fact.get('source_url') if isinstance(fact, dict) else fact.source_url
                     f_key = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
                     f_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
-                    f_method = fact.get('verification_method') if isinstance(fact, dict) else fact.verification_method
-                    f_details = fact.get('verification_details') if isinstance(fact, dict) else fact.verification_details
                     
-                    print(f"\n   {i}. {f_key}")
-                    print(f"       Source: {f_url}")
-                    print(f"       Trust: {f_trust}")
-                    print(f"       Verification: {f_method}")
-                    print(f"       Details: {f_details}")
-            else:
-                print(f"\nDEFENDER FACTS: No supporting evidence found")
+                    idx = len(all_sources) + 1
+                    all_sources.append({"index": idx, "url": f_url, "trust": f_trust})
+                    
+                    trust_indicator = _get_trust_indicator(f_trust)
+                    print(f"\n   • {f_key} [{idx}] {trust_indicator}")
+            
+            # Supporting Evidence
+            if a_def:
+                print(f"\n✅ Supporting Evidence:")
+                for fact in a_def:
+                    f_url = fact.get('source_url') if isinstance(fact, dict) else fact.source_url
+                    f_key = fact.get('key_fact') if isinstance(fact, dict) else fact.key_fact
+                    f_trust = fact.get('trust_score') if isinstance(fact, dict) else fact.trust_score
+                    
+                    idx = len(all_sources) + 1
+                    all_sources.append({"index": idx, "url": f_url, "trust": f_trust})
+                    
+                    trust_indicator = _get_trust_indicator(f_trust)
+                    print(f"\n   • {f_key} [{idx}] {trust_indicator}")
+            
+            # Print sources list
+            if all_sources:
+                print(f"\n📚 Sources:")
+                for src in all_sources:
+                    print(f"   [{src['index']}] {src['url']} ({src['trust']} Trust)")
