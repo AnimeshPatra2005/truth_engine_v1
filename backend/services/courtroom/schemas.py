@@ -43,6 +43,11 @@ class ClaimEvidence(BaseModel):
     claim_id: int
     prosecutor_facts: List[Evidence] = Field(max_items=2, description="Top 2 contradicting facts")
     defender_facts: List[Evidence] = Field(max_items=2, description="Top 2 supporting facts")
+    extra_evidence: List[Evidence] = Field(
+        default=[],
+        max_items=2,
+        description="Tangential facts that help verify the overall implication, not this specific claim"
+    )
 
 
 class VerifiedEvidence(BaseModel):

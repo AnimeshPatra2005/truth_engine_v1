@@ -38,7 +38,8 @@ def search_web(query: str, intent: str = "general", max_retries: int = 3) -> lis
                 query=query,
                 search_depth="advanced",
                 max_results=10,  # Increased to 10 for better consensus checks
-                timeout=30  # Increased from default 10s to 30s
+                timeout=30,
+                include_raw_content=True  
             )
 
             MIN_RELEVANCE_SCORE = 0.3
@@ -54,7 +55,7 @@ def search_web(query: str, intent: str = "general", max_retries: int = 3) -> lis
                 clean_results.append({
                     "title": result.get("title", "Untitled"),
                     "url": result.get("url", ""),
-                    "snippet": result.get("content", "")[:1000],  # Keep under 1000 chars
+                    "snippet": result.get("content", ""),  
                     "score": score,
                 })
 
@@ -91,7 +92,7 @@ if __name__ == "__main__":
     
     # Test query
     result = search_web(
-        "Karna pushed Arjuna's chariot documented recorded Mahabharata", 
+        "Textual Eviednce why Karna is Stronger than Arjun in Mahabharata", 
         intent="prosecutor"
     )
     
@@ -100,11 +101,11 @@ if __name__ == "__main__":
     print(f"Result length: {len(result)}")
     
     if result:
-        print("\nFirst result:")
-        for key, value in result[0].items():
-            if key != "snippet":
-                print(f"   {key}: {value}")
-            else:
-                print(f"   {key}: {value[:100]}...")
+        print(f"\n--- Found {len(result)} Results ---")
+        for i, item in enumerate(result, 1):
+            print(f"\n[{i}] {item.get('title', 'No Title')}")
+            print(f"    URL: {item.get('url', 'No URL')}")
+            print(f"    Score: {item.get('score', 0)}")
+            print(f"    Snippet: {item.get('snippet', '')}")
     else:
         print("\nNo results returned")

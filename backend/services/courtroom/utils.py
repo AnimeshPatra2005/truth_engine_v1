@@ -203,20 +203,20 @@ def safe_invoke_json(model, prompt_text, pydantic_object, max_retries=MAX_RETRIE
             error_str = str(e)
             
             # Log the FULL error for debugging
-            print(f"    ⚠️ API ERROR: {error_str[:200]}")
+            print(f"    API ERROR: {error_str[:200]}")
             
             if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
                 print(f"    QUOTA EXHAUSTED (Attempt {attempt + 1}/{max_retries})")
                 
                 # FALLBACK LOGIC: Switch to llm_fallback if primary model fails
                 if model != llm_fallback:
-                    print(f"    🔄 SWITCHING TO FALLBACK MODEL (Gemini 1.5 Flash)...")
+                    print(f"     SWITCHING TO FALLBACK MODEL (Gemini 1.5 Flash)...")
                     try:
                         # Recursive call with fallback model
                         # Decrease retries to avoid infinite loops
                         return safe_invoke_json(llm_fallback, prompt_text, pydantic_object, max_retries=2)
                     except Exception as fallback_error:
-                        print(f"    ❌ Fallback model also failed: {fallback_error}")
+                        print(f"    Fallback model also failed: {fallback_error}")
                         # Fall through to normal retry logic
 
                 retry_match = re.search(r'retry in (\d+\.?\d*)s', error_str)
