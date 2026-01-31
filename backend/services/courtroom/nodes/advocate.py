@@ -25,7 +25,7 @@ def _build_evidence_text(prosecutor_results: list, defender_results: list) -> st
             all_evidence_text += f"\nSource {i+1}:\n"
             all_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
             all_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
-            all_evidence_text += f"Content: {result.get('snippet', '')[:800]}\n"
+            all_evidence_text += f"Content: {result.get('snippet', '')[:2000]}\n"
             all_evidence_text += "-" * 60 + "\n"
     
     if defender_results:
@@ -34,7 +34,7 @@ def _build_evidence_text(prosecutor_results: list, defender_results: list) -> st
             all_evidence_text += f"\nSource {i+1}:\n"
             all_evidence_text += f"URL: {result.get('url', 'unknown')}\n"
             all_evidence_text += f"Title: {result.get('title', 'Untitled')}\n"
-            all_evidence_text += f"Content: {result.get('snippet', '')[:800]}\n"
+            all_evidence_text += f"Content: {result.get('snippet', '')[:2000]}\n"
             all_evidence_text += "-" * 60 + "\n"
     
     return all_evidence_text
@@ -211,8 +211,8 @@ def evidence_extraction_node(state: CourtroomState, include_extras: bool = True)
         print(f"       Prosecutor Query: {claim.prosecutor_query}")
         try:
             raw_pros_results = search_web_with_count(claim.prosecutor_query, num_results=5, intent="prosecutor")
-            prosecutor_results = raw_pros_results[:2] if raw_pros_results and isinstance(raw_pros_results, list) else []
-            print(f"          Retrieved {len(prosecutor_results)} prosecutor sources")
+            prosecutor_results = raw_pros_results if raw_pros_results and isinstance(raw_pros_results, list) else []
+            print(f"          Retrieved {len(prosecutor_results)} prosecutor sources (using ALL)")
         except Exception as e:
             print(f"          Prosecutor search failed: {e}")
             prosecutor_results = []
@@ -221,8 +221,8 @@ def evidence_extraction_node(state: CourtroomState, include_extras: bool = True)
         print(f"       Defender Query: {claim.defender_query}")
         try:
             raw_def_results = search_web_with_count(claim.defender_query, num_results=5, intent="defender")
-            defender_results = raw_def_results[:2] if raw_def_results and isinstance(raw_def_results, list) else []
-            print(f"          Retrieved {len(defender_results)} defender sources")
+            defender_results = raw_def_results if raw_def_results and isinstance(raw_def_results, list) else []
+            print(f"          Retrieved {len(defender_results)} defender sources (using ALL)")
         except Exception as e:
             print(f"          Defender search failed: {e}")
             defender_results = []
