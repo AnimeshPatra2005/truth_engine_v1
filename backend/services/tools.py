@@ -15,6 +15,18 @@ if not api_key:
 else:
     tavily_client = TavilyClient(api_key=api_key)
 
+# Low-quality domains to exclude from search results
+EXCLUDED_DOMAINS = [
+    "quora.com",
+    "reddit.com",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+    "instagram.com",
+    "youtube.com", 
+    "linkedin.com"
+]
+
 def search_web(query: str, intent: str = "general", max_retries: int = 3) -> list:
     """
     Searches the web using Tavily and returns a LIST of results.
@@ -25,6 +37,7 @@ def search_web(query: str, intent: str = "general", max_retries: int = 3) -> lis
     - Increased timeout to 30 seconds
     - Rate limiting to respect 100 RPM limit (0.65s delay)
     - Graceful error handling
+    - Excludes low-quality domains (Quora, Reddit, etc.)
     """
     if not tavily_client:
         print("Search disabled (No API Key)")
@@ -39,7 +52,8 @@ def search_web(query: str, intent: str = "general", max_retries: int = 3) -> lis
                 search_depth="advanced",
                 max_results=10,  # Increased to 10 for better consensus checks
                 timeout=30,
-                include_raw_content=True  
+                include_raw_content=True,
+                exclude_domains=EXCLUDED_DOMAINS  # NEW: Filter out junk sites
             )
 
             MIN_RELEVANCE_SCORE = 0.3
