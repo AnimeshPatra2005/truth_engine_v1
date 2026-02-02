@@ -254,7 +254,7 @@ function TryPage() {
                     {/* Show welcome screen when idle */}
                     {!currentResult && !loading && !userQuery && (
                         <div className="welcome-screen">
-                            <h1>Truth Engine</h1>
+                            <h1>SATYA</h1>
                             <p className="welcome-text">
                                 Upload a video or type your query to verify facts against reality.
                             </p>
