@@ -5,9 +5,10 @@ import './LandingPage.css';
 function LandingPage() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const canvasRef = useRef(null);
+    const rotationRef = useRef(90); // Start with vertical split (90 degrees)
 
     // ============================================
-    // PARTICLE CANVAS ANIMATION
+    // PARTICLE CANVAS ANIMATION WITH COLOR INVERSION
     // ============================================
 
     useEffect(() => {
@@ -19,43 +20,69 @@ function LandingPage() {
         canvas.height = window.innerHeight;
 
         const particles = [];
-        const particleCount = 100; // Number of particles to create
-        let mouse = { x: null, y: null, radius: 150 }; // Mouse interaction area
+        const particleCount = 100; // Increased to 250 for denser coverage
+        let mouse = { x: null, y: null, radius: 150 };
 
-        // Particle class - each particle is an independent object
+
+        // Get the current rotation angle for the split line
+        const getRotation = () => rotationRef.current;
+
+        // Calculate signed distance from the split line (negative = white side, positive = black side)
+        const getSignedDistance = (x, y, rotation) => {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            // CORRECTED: CSS 0deg is Up, Math 0deg is Right.
+            // CSS 90deg is Right.
+            // We need to offset by -90 degrees to match CSS gradient direction.
+            const theta = ((rotation - 90) * Math.PI) / 180;
+            return (x - cx) * Math.cos(theta) + (y - cy) * Math.sin(theta);
+        };
+
+        // Get particle color with sharp transition at boundary
+        const getParticleColor = (x, y, rotation, alpha = 0.8) => {
+            const d = getSignedDistance(x, y, rotation);
+            const transitionZone = 40; // Increased zone for visible smooth transition
+
+            // Clamp the blend factor between 0 and 1
+            // d < -transitionZone => fully on white side => black particle
+            // d > transitionZone => fully on black side => white particle
+            let blend = (d + transitionZone) / (2 * transitionZone);
+
+            blend = Math.max(0, Math.min(1, blend));
+
+            // Interpolate from black (0,0,0) to white (255,255,255)
+            const colorValue = Math.round(blend * 255);
+            return `rgba(${colorValue}, ${colorValue}, ${colorValue}, ${alpha})`;
+        };
+
         class Particle {
             constructor() {
-                // Random starting position
                 this.x = Math.random() * canvas.width;
                 this.y = Math.random() * canvas.height;
-                this.size = Math.random() * 3 + 1; // Random size between 1-4px
-                this.baseX = this.x; // Remember original position
+                this.size = Math.random() * 5 + 1; // Varied size 1-6px
+                this.baseX = this.x;
                 this.baseY = this.y;
-                this.density = Math.random() * 30 + 1; // How much it reacts to mouse
-                this.vx = Math.random() * 0.5 - 0.25; // Random velocity X
-                this.vy = Math.random() * 0.5 - 0.25; // Random velocity Y
+                this.density = Math.random() * 30 + 1;
+                this.vx = Math.random() * 0.5 - 0.25;
+                this.vy = Math.random() * 0.5 - 0.25;
             }
 
-            // Draw the particle on canvas
             draw() {
-                ctx.fillStyle = 'rgba(168, 199, 250, 0.6)'; // Light blue color
+                const rotation = getRotation();
+                ctx.fillStyle = getParticleColor(this.x, this.y, rotation, 0.9);
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
                 ctx.closePath();
                 ctx.fill();
             }
 
-            // Update particle position each frame
             update() {
-                // Gentle floating movement
                 this.baseX += this.vx;
                 this.baseY += this.vy;
 
-                // Bounce off edges
                 if (this.baseX < 0 || this.baseX > canvas.width) this.vx *= -1;
                 if (this.baseY < 0 || this.baseY > canvas.height) this.vy *= -1;
 
-                // Mouse interaction - particles move away from cursor
                 let dx = mouse.x - this.baseX;
                 let dy = mouse.y - this.baseY;
                 let distance = Math.sqrt(dx * dx + dy * dy);
@@ -67,11 +94,9 @@ function LandingPage() {
                 let directionY = forceDirectionY * force * this.density;
 
                 if (distance < mouse.radius) {
-                    // Push particle away from mouse
                     this.x -= directionX;
                     this.y -= directionY;
                 } else {
-                    // Return to base position
                     if (this.x !== this.baseX) {
                         let dx = this.x - this.baseX;
                         this.x -= dx / 10;
@@ -84,47 +109,23 @@ function LandingPage() {
             }
         }
 
-        // Create all particles
         for (let i = 0; i < particleCount; i++) {
             particles.push(new Particle());
         }
 
-        // Connect nearby particles with lines
-        function connect() {
-            for (let a = 0; a < particles.length; a++) {
-                for (let b = a; b < particles.length; b++) {
-                    let dx = particles[a].x - particles[b].x;
-                    let dy = particles[a].y - particles[b].y;
-                    let distance = Math.sqrt(dx * dx + dy * dy);
+        // connect() removed for cleaner look
 
-                    // Only connect if particles are close enough
-                    if (distance < 100) {
-                        ctx.strokeStyle = `rgba(168, 199, 250, ${1 - distance / 100})`;
-                        ctx.lineWidth = 0.5;
-                        ctx.beginPath();
-                        ctx.moveTo(particles[a].x, particles[a].y);
-                        ctx.lineTo(particles[b].x, particles[b].y);
-                        ctx.stroke();
-                    }
-                }
-            }
-        }
-
-        // Animation loop - runs 60 times per second
         function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
-
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             for (let i = 0; i < particles.length; i++) {
                 particles[i].update();
                 particles[i].draw();
             }
-            connect(); // Draw lines between particles
-            requestAnimationFrame(animate); // Loop
+            requestAnimationFrame(animate);
         }
 
-        animate(); // Start animation
+        animate();
 
-        // Event listeners for mouse interaction
         const handleMouseMove = (e) => {
             mouse.x = e.x;
             mouse.y = e.y;
@@ -144,20 +145,18 @@ function LandingPage() {
         window.addEventListener('mouseout', handleMouseOut);
         window.addEventListener('resize', handleResize);
 
-        // Cleanup when component unmounts
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseout', handleMouseOut);
             window.removeEventListener('resize', handleResize);
         };
-    }, []); // Empty dependency array = run once on mount
+    }, []);
 
     // ============================================
-    // GSAP SCROLL ANIMATIONS
+    // GSAP SCROLL ANIMATIONS - Rotating Split ONLY
     // ============================================
 
     useEffect(() => {
-        // Only run on desktop/tablet, not mobile
         if (window.innerWidth < 768) return;
 
         const loadGSAP = async () => {
@@ -166,109 +165,44 @@ function LandingPage() {
 
             gsap.registerPlugin(ScrollTrigger);
 
-            // Features section - slide in from right
-            gsap.fromTo('.features',
-                { x: 300, opacity: 0 },
-                {
-                    scrollTrigger: {
-                        trigger: '.features',
-                        start: 'top 80%',
-                        end: 'top 40%',
-                        scrub: 1.5,
-                    },
-                    x: 0,
-                    opacity: 1,
-                    ease: 'power2.out'
-                }
-            );
+            // Animate the rotation of the split background
+            // This is the ONLY animation - no transform/opacity on content sections
+            // as that would create stacking contexts breaking mix-blend-mode
+            // Monotonic Rotation Logic - Continuous
+            // The goal is constant rotation during scroll, aligning horizontal states (0, 180, 360) with sections.
+            // Alignment Plan:
+            // - Start (Hero): 90deg (Vertical)
+            // - Scroll to Features (~30%): 180deg (Horizontal)
+            // - Scroll to How it Works (~60%): 360deg (Horizontal)
+            // - Scroll to End (~90%): 540deg (Horizontal)
 
-            // Individual feature cards stagger
-            gsap.fromTo('.feature-card',
-                { x: 150, opacity: 0 },
-                {
-                    scrollTrigger: {
-                        trigger: '.features-grid',
-                        start: 'top 75%',
-                        end: 'top 45%',
-                        scrub: 1.5,
-                    },
-                    x: 0,
-                    opacity: 1,
-                    stagger: 0.1,
-                    ease: 'power2.out'
-                }
-            );
+            const proxy = { rotation: 90 };
 
-            // How It Works section - slide in from left
-            gsap.fromTo('.how-it-works',
-                { x: -300, opacity: 0 },
-                {
-                    scrollTrigger: {
-                        trigger: '.how-it-works',
-                        start: 'top 80%',
-                        end: 'top 40%',
-                        scrub: 1.5,
-                    },
-                    x: 0,
-                    opacity: 1,
-                    ease: 'power2.out'
-                }
-            );
+            const updateRotation = () => {
+                rotationRef.current = proxy.rotation;
+                document.documentElement.style.setProperty('--split-rotation', `${proxy.rotation}deg`);
+            };
 
-            // Step cards - slide in individually
-            gsap.fromTo('.step-card',
-                { x: -150, opacity: 0 },
-                {
-                    scrollTrigger: {
-                        trigger: '.steps-container',
-                        start: 'top 75%',
-                        end: 'top 45%',
-                        scrub: 1.5,
-                    },
-                    x: 0,
-                    opacity: 1,
-                    stagger: 0.15,
-                    ease: 'power2.out'
+            const tl = gsap.timeline({
+                scrollTrigger: {
+                    trigger: '.landing-page',
+                    start: 'top top',
+                    end: 'bottom bottom',
+                    scrub: 0.5,
                 }
-            );
+            });
 
-            // About section - slide in from right
-            gsap.fromTo('.about-section',
-                { x: 300, opacity: 0 },
-                {
-                    scrollTrigger: {
-                        trigger: '.about-section',
-                        start: 'top 80%',
-                        end: 'top 40%',
-                        scrub: 1.5,
-                    },
-                    x: 0,
-                    opacity: 1,
-                    ease: 'power2.out'
-                }
-            );
+            // Use 'none' ease for truly continuous rotation
+            tl.to(proxy, { rotation: 180, duration: 1, ease: 'none', onUpdate: updateRotation })
+                .to(proxy, { rotation: 360, duration: 1, ease: 'none', onUpdate: updateRotation })
+                .to(proxy, { rotation: 540, duration: 1, ease: 'none', onUpdate: updateRotation });
 
-            // CTA section - slide in from left
-            gsap.fromTo('.cta-section',
-                { x: -300, opacity: 0 },
-                {
-                    scrollTrigger: {
-                        trigger: '.cta-section',
-                        start: 'top 80%',
-                        end: 'top 40%',
-                        scrub: 1.5,
-                    },
-                    x: 0,
-                    opacity: 1,
-                    ease: 'power2.out'
-                }
-            );
+
         };
 
         loadGSAP();
 
         return () => {
-            // Cleanup ScrollTrigger instances
             if (window.ScrollTrigger) {
                 window.ScrollTrigger.getAll().forEach(trigger => trigger.kill());
             }
@@ -276,28 +210,28 @@ function LandingPage() {
     }, []);
 
     return (
+
         <div className="landing-page">
-            {/* ============================================ */}
-            {/* PARTICLE CANVAS - Interactive Background */}
-            {/* ============================================ */}
+            {/* Split Background */}
+            <div className="split-background"></div>
+
+            {/* Particle Canvas */}
             <canvas ref={canvasRef} className="particle-canvas"></canvas>
 
             {/* ============================================ */}
-            {/* NAVIGATION BAR */}
+            {/* NAVIGATION BAR - Integrated into page */}
             {/* ============================================ */}
             <nav className="navbar">
                 <div className="container">
                     <div className="nav-content">
-                        <div className="logo">
-                            <span>Truth Engine</span>
+                        {/* Unified nav links container for even spacing */}
+                        <div className="nav-links">
+                            <a href="#features">FEATURES</a>
+                            <a href="#how-it-works">HOW IT WORKS</a>
+                            <a href="#about">ABOUT</a>
+                            <Link to="/try" className="nav-link-try">TRY NOW</Link>
                         </div>
 
-                        <div className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
-                            <a href="#features">Features</a>
-                            <a href="#how-it-works">How It Works</a>
-                            <a href="#about">About</a>
-                            <Link to="/try" className="btn-primary">Try It Now</Link>
-                        </div>
 
                         <button
                             className="menu-toggle"
@@ -309,74 +243,36 @@ function LandingPage() {
                         </button>
                     </div>
                 </div>
+
+                {/* Mobile Menu */}
+                <div className={`mobile-menu ${isMenuOpen ? 'active' : ''}`}>
+                    <a href="#features" onClick={() => setIsMenuOpen(false)}>FEATURES</a>
+                    <a href="#how-it-works" onClick={() => setIsMenuOpen(false)}>HOW IT WORKS</a>
+                    <a href="#about" onClick={() => setIsMenuOpen(false)}>ABOUT</a>
+                    <Link to="/try" onClick={() => setIsMenuOpen(false)}>TRY NOW</Link>
+                </div>
             </nav>
 
             {/* ============================================ */}
-            {/* HERO SECTION - Main Landing Area */}
+            {/* HERO SECTION - SATYA Typography */}
             {/* ============================================ */}
             <section className="hero">
-                {/* Animated gradient orbs in background */}
-                <div className="hero-background">
-                    <div className="gradient-orb orb-1"></div>
-                    <div className="gradient-orb orb-2"></div>
-                    <div className="gradient-orb orb-3"></div>
-                </div>
-
-                <div className="container">
-                    <div className="hero-content">
-                        {/* Badge - small indicator */}
-                        <div className="hero-badge">
-                            <span className="badge-dot"></span>
-                            AI-Powered Verification
-                        </div>
-
-                        {/* Main headline */}
-                        <h1 className="hero-title">
-                            Verify Truth in
-                            <br />
-                            <span className="gradient-text">Video Content</span>
-                        </h1>
-
-                        {/* Description */}
-                        <p className="hero-description">
-                            Upload any video, extract transcripts instantly, and get AI-powered fact-checking results.
-                            Truth Engine analyzes claims and provides verified information in seconds.
-                        </p>
-
-                        {/* Call-to-action buttons */}
-                        <div className="hero-actions">
-                            <Link to="/try" className="btn-primary btn-large">
-                                <span>Start Fact-Checking</span>
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                    <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </Link>
-                            <a href="#how-it-works" className="btn-secondary btn-large">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                    <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" />
-                                    <path d="M10 6V10L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                </svg>
-                                <span>See How It Works</span>
-                            </a>
-                        </div>
-
-                        {/* Disclaimer Notice */}
-                        <div className="hero-disclaimer">
+                <div className="hero-content">
+                    <h1 className="hero-title">SATYA</h1>
+                    <p className="hero-quote">"Truth starts with facts and ends with implications"</p>
+                    <div className="hero-actions">
+                        <Link to="/try" className="btn-primary btn-large">
+                            <span>Try Now</span>
                             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.5" />
-                                <path d="M10 6v4M10 14h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
-                            <p>
-                                <strong>Important:</strong> All information is sourced from the internet.
-                                We strongly recommend verifying sources and arguments independently for critical decisions.
-                            </p>
-                        </div>
+                        </Link>
                     </div>
                 </div>
             </section>
 
             {/* ============================================ */}
-            {/* FEATURES SECTION - 6 Feature Cards */}
+            {/* FEATURES SECTION */}
             {/* ============================================ */}
             <section id="features" className="features">
                 <div className="container">
@@ -385,7 +281,6 @@ function LandingPage() {
                         <p className="section-description">Everything you need to verify video content with confidence</p>
                     </div>
                     <div className="features-grid">
-                        {/* Feature Card 1 */}
                         <div className="feature-card">
                             <div className="feature-icon">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -397,19 +292,16 @@ function LandingPage() {
                             <p className="feature-description">Advanced AI extracts accurate transcripts from any video format in seconds</p>
                         </div>
 
-                        {/* Feature Card 2 */}
                         <div className="feature-card">
                             <div className="feature-icon">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <path d="M12 2L4 9V15C4 23 10 29 16 30C22 29 28 23 28 15V9L12 2Z" stroke="currentColor" strokeWidth="2" />
-                                    <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                             </div>
                             <h3 className="feature-title">AI Fact Verification</h3>
                             <p className="feature-description">Cross-reference claims against trusted sources for accurate verification</p>
                         </div>
 
-                        {/* Feature Card 3 */}
                         <div className="feature-card">
                             <div className="feature-icon">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -420,7 +312,6 @@ function LandingPage() {
                             <p className="feature-description">Get instant results as your video is processed with live progress updates</p>
                         </div>
 
-                        {/* Feature Card 4 */}
                         <div className="feature-card">
                             <div className="feature-icon">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -432,7 +323,6 @@ function LandingPage() {
                             <p className="feature-description">Every fact check includes detailed sources and references for transparency</p>
                         </div>
 
-                        {/* Feature Card 5 */}
                         <div className="feature-card">
                             <div className="feature-icon">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -444,7 +334,6 @@ function LandingPage() {
                             <p className="feature-description">Access all your previous fact-checks with organized history and search</p>
                         </div>
 
-                        {/* Feature Card 6 */}
                         <div className="feature-card">
                             <div className="feature-icon">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -460,7 +349,7 @@ function LandingPage() {
             </section>
 
             {/* ============================================ */}
-            {/* HOW IT WORKS SECTION - 3 Step Process */}
+            {/* HOW IT WORKS SECTION */}
             {/* ============================================ */}
             <section id="how-it-works" className="how-it-works">
                 <div className="container">
@@ -469,7 +358,6 @@ function LandingPage() {
                         <p className="section-description">Three simple steps to verify any video content</p>
                     </div>
                     <div className="steps-container">
-                        {/* Step 1 */}
                         <div className="step-card">
                             <div className="step-number">01</div>
                             <div className="step-content">
@@ -484,10 +372,12 @@ function LandingPage() {
                             </div>
                         </div>
 
-                        {/* Arrow */}
-                        <div className="step-arrow">→</div>
+                        <div className="step-arrow">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                                <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </div>
 
-                        {/* Step 2 */}
                         <div className="step-card">
                             <div className="step-number">02</div>
                             <div className="step-content">
@@ -502,10 +392,12 @@ function LandingPage() {
                             </div>
                         </div>
 
-                        {/* Arrow */}
-                        <div className="step-arrow">→</div>
+                        <div className="step-arrow">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                                <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </div>
 
-                        {/* Step 3 */}
                         <div className="step-card">
                             <div className="step-number">03</div>
                             <div className="step-content">
@@ -524,14 +416,14 @@ function LandingPage() {
             </section>
 
             {/* ============================================ */}
-            {/* ABOUT SECTION - Why Truth Engine */}
+            {/* ABOUT SECTION */}
             {/* ============================================ */}
             <section id="about" className="about-section">
                 <div className="container">
                     <div className="about-content">
-                        <h2 className="section-title">Why Truth Engine?</h2>
+                        <h2 className="section-title">Why SATYA?</h2>
                         <p className="about-text">
-                            In an era of misinformation, Truth Engine empowers you to verify video content with confidence.
+                            In an era of misinformation, SATYA empowers you to verify video content with confidence.
                             Our advanced AI technology combines speech recognition, natural language processing, and
                             fact-checking algorithms to deliver accurate, transparent results you can trust.
                         </p>
@@ -540,7 +432,7 @@ function LandingPage() {
             </section>
 
             {/* ============================================ */}
-            {/* CTA SECTION - Final Call-to-Action */}
+            {/* CTA SECTION */}
             {/* ============================================ */}
             <section className="cta-section">
                 <div className="container">
@@ -548,7 +440,7 @@ function LandingPage() {
                         <h2 className="cta-title">Ready to Verify the Truth?</h2>
                         <p className="cta-description">Start fact-checking videos with AI-powered precision today</p>
                         <Link to="/try" className="btn-primary btn-large">
-                            <span>Try Truth Engine Now</span>
+                            <span>Try SATYA Now</span>
                             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                                 <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
@@ -563,15 +455,13 @@ function LandingPage() {
             <footer className="footer">
                 <div className="container">
                     <div className="footer-grid">
-                        {/* Brand Box */}
                         <div className="footer-box">
                             <div className="logo">
-                                <span>Truth Engine</span>
+                                <span>SATYA</span>
                             </div>
                             <p className="footer-tagline">AI-Powered Video Fact Checking</p>
                         </div>
 
-                        {/* Quick Links Box */}
                         <div className="footer-box">
                             <h4>Quick Links</h4>
                             <div className="footer-links-list">
@@ -584,7 +474,7 @@ function LandingPage() {
                     </div>
                 </div>
             </footer>
-        </div >
+        </div>
     );
 }
 
