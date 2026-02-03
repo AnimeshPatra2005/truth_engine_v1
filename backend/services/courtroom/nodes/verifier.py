@@ -29,6 +29,7 @@ class ConsensusAnalysis(BaseModel):
     neutral: int = Field(description="Number of neutral/unclear sources")
     confidence: Literal["High", "Medium", "Low"] = Field(description="Confidence level based on agreement percentage")
     reasoning: str = Field(description="Brief explanation of consensus pattern")
+    majority_urls: List[str] = Field(default=[], description="URLs of sources that voted in the majority")
 
 
 def analyze_consensus_with_gemini(claim: str, search_results: list) -> dict:
@@ -85,6 +86,7 @@ def analyze_consensus_with_gemini(claim: str, search_results: list) -> dict:
        - "Medium" if 50-69% agree (5-6 out of 10)
        - "Low" if less than 50% agree (4 or fewer, or conflicting results)
     5. Brief reasoning (2-3 sentences)
+    6. **majority_urls**: List of URLs that voted in the MAJORITY (if 6 support, list those 6 URLs)
     
     OUTPUT FORMAT (JSON):
     {{
@@ -92,13 +94,15 @@ def analyze_consensus_with_gemini(claim: str, search_results: list) -> dict:
       "contradicts": <number>,
       "neutral": <number>,
       "confidence": "High" | "Medium" | "Low",
-      "reasoning": "Brief explanation of the consensus pattern"
+      "reasoning": "Brief explanation of the consensus pattern",
+      "majority_urls": ["url1", "url2", ...]
     }}
     
     IMPORTANT: 
     - The numbers MUST add up to {len(search_results)}
     - Be strict - only count clear support/contradiction
     - When in doubt, mark as neutral
+    - In majority_urls, include ONLY the URLs that voted with the majority (supports OR contradicts, whichever is larger)
     """
     
     # Use MEDIUM thinking for consensus pattern recognition
@@ -123,6 +127,7 @@ class SingleConsensusAnalysis(BaseModel):
     neutral: int
     confidence: Literal["High", "Medium", "Low"]
     reasoning: str
+    majority_urls: List[str] = Field(default=[], description="URLs of sources that voted in the majority")
 
 
 def analyze_consensus_batch(evidence_list: list, search_results_map: dict) -> dict:
@@ -185,6 +190,7 @@ def analyze_consensus_batch(evidence_list: list, search_results_map: dict) -> di
        - "Medium" if 50-69% agree
        - "Low" if <50% agree or conflicting results
     5. **reasoning**: Brief 2-3 sentence explanation
+    6. **majority_urls**: List of URLs from the search results that voted in the MAJORITY
     
     IMPORTANT CONTEXT:
     - "Prosecutor" evidence = facts that CONTRADICT the original claim
@@ -208,7 +214,8 @@ def analyze_consensus_batch(evidence_list: list, search_results_map: dict) -> di
         "contradicts": <number>,
         "neutral": <number>,
         "confidence": "High" | "Medium" | "Low",
-        "reasoning": "Brief explanation"
+        "reasoning": "Brief explanation",
+        "majority_urls": ["url1", "url2", ...]
       }},
       {{
         "evidence_id": "evidence_2",
@@ -221,6 +228,7 @@ def analyze_consensus_batch(evidence_list: list, search_results_map: dict) -> di
     - Each analysis must have the correct evidence_id
     - Numbers must add up to the total number of search results for that evidence
     - Be strict - only count CLEAR support/contradiction
+    - In majority_urls, include ONLY the URLs that voted with the majority verdict
     """
     
     # Use MEDIUM thinking for consensus pattern recognition
@@ -246,7 +254,8 @@ def analyze_consensus_batch(evidence_list: list, search_results_map: dict) -> di
             "contradicts": analysis['contradicts'],
             "neutral": analysis['neutral'],
             "confidence": analysis['confidence'],
-            "reasoning": analysis['reasoning']
+            "reasoning": analysis['reasoning'],
+            "majority_urls": analysis.get('majority_urls', [])
         }
         for analysis in analyses
     }
@@ -316,7 +325,8 @@ def three_tier_fact_check_node_batched(state: CourtroomState):
                         side=side_name,
                         trust_score="High",
                         verification_method="Tier1-FactCheck",
-                        verification_details=tier1_result
+                        verification_details=tier1_result,
+                        supporting_urls=[]
                     ))
                     continue
                 
@@ -333,7 +343,8 @@ def three_tier_fact_check_node_batched(state: CourtroomState):
                         side=side_name,
                         trust_score=domain_trust,
                         verification_method="Tier2-Domain",
-                        verification_details=tier2_details
+                        verification_details=tier2_details,
+                        supporting_urls=[]
                     ))
                     continue
                 
@@ -364,7 +375,8 @@ def three_tier_fact_check_node_batched(state: CourtroomState):
                         side=side_name,
                         trust_score="Low",
                         verification_method="Unverified",
-                        verification_details="Consensus search failed"
+                        verification_details="Consensus search failed",
+                        supporting_urls=[]
                     ))
         
         # Store intermediate results (will be updated after batch consensus)
@@ -461,7 +473,8 @@ def three_tier_fact_check_node_batched(state: CourtroomState):
                         side=side,
                         trust_score=trust_score,
                         verification_method="Tier3-Consensus-Batch",
-                        verification_details=details
+                        verification_details=details,
+                        supporting_urls=consensus_analysis.get('majority_urls', [])
                     )
                     
                     # Add to appropriate list
@@ -539,7 +552,8 @@ def three_tier_fact_check_node(state: CourtroomState):
                     side="prosecutor",
                     trust_score="High",
                     verification_method="Tier1-FactCheck",
-                    verification_details=tier1_result
+                    verification_details=tier1_result,
+                    supporting_urls=[]
                 ))
                 continue
             
@@ -556,7 +570,8 @@ def three_tier_fact_check_node(state: CourtroomState):
                     side="prosecutor",
                     trust_score=domain_trust,
                     verification_method="Tier2-Domain",
-                    verification_details=tier2_details
+                    verification_details=tier2_details,
+                    supporting_urls=[]
                 ))
                 continue
             
@@ -603,7 +618,8 @@ def three_tier_fact_check_node(state: CourtroomState):
                     side="prosecutor",
                     trust_score=trust_score,
                     verification_method="Tier3-Consensus",
-                    verification_details=tier3_details
+                    verification_details=tier3_details,
+                    supporting_urls=consensus_analysis.get('majority_urls', [])
                 ))
             else:
                 # All tiers failed - mark as Low trust
@@ -614,7 +630,8 @@ def three_tier_fact_check_node(state: CourtroomState):
                     side="prosecutor",
                     trust_score="Low",
                     verification_method="Unverified",
-                    verification_details="Could not verify through any tier"
+                    verification_details="Could not verify through any tier",
+                    supporting_urls=[]
                 ))
         
         # Process defender facts
@@ -639,7 +656,8 @@ def three_tier_fact_check_node(state: CourtroomState):
                     side="defender",
                     trust_score="High",
                     verification_method="Tier1-FactCheck",
-                    verification_details=tier1_result
+                    verification_details=tier1_result,
+                    supporting_urls=[]
                 ))
                 continue
             
@@ -656,7 +674,8 @@ def three_tier_fact_check_node(state: CourtroomState):
                     side="defender",
                     trust_score=domain_trust,
                     verification_method="Tier2-Domain",
-                    verification_details=tier2_details
+                    verification_details=tier2_details,
+                    supporting_urls=[]
                 ))
                 continue
             
@@ -703,7 +722,8 @@ def three_tier_fact_check_node(state: CourtroomState):
                     side="defender",
                     trust_score=trust_score,
                     verification_method="Tier3-Consensus",
-                    verification_details=tier3_details
+                    verification_details=tier3_details,
+                    supporting_urls=consensus_analysis.get('majority_urls', [])
                 ))
             else:
                 # All tiers failed - mark as Low trust
@@ -714,7 +734,8 @@ def three_tier_fact_check_node(state: CourtroomState):
                     side="defender",
                     trust_score="Low",
                     verification_method="Unverified",
-                    verification_details="Could not verify through any tier"
+                    verification_details="Could not verify through any tier",
+                    supporting_urls=[]
                 ))
         
         verified_claims.append({

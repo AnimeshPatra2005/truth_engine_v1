@@ -58,6 +58,7 @@ class VerifiedEvidence(BaseModel):
     trust_score: Literal["High", "Medium", "Low"]
     verification_method: str = Field(description="Which tier verified this: Tier1-FactCheck / Tier2-Domain / Tier3-Consensus")
     verification_details: str = Field(description="Details of verification result")
+    supporting_urls: List[str] = Field(default=[], description="Consensus URLs that agreed with this fact (for Tier 3 only)")
 
 
 # ==============================================================================
