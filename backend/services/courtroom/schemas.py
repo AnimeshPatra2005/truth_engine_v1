@@ -91,3 +91,4 @@ class CourtroomState(TypedDict):
     all_claim_evidence: Optional[List[ClaimEvidence]]
     verified_evidence: Optional[List[dict]]
     final_verdict: Optional[FinalVerdict]
+    case_id: Optional[str]  # Vector DB case ID
