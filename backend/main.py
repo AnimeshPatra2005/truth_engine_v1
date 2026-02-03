@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.upload import router as upload_router
+from api.chat import router as chat_router
 from services.run_pipeline import run_full_pipeline
 from services.transcriber import load_whisper_model
 from db.case_store import init_collection
@@ -12,7 +13,7 @@ async def lifespan(app: FastAPI):
     # Load Machine Learning models and initialize Vector DB on startup
     load_whisper_model()
     init_collection()
-    print("Vector DB initialized")
+    print("✓ Vector DB initialized")
     yield
     # Clean up if needed
     print("Shutting down...")
@@ -34,8 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include your upload router
+# Include routers
 app.include_router(upload_router, prefix="/api")
+app.include_router(chat_router, prefix="/api")
 
 @app.get("/")
 def health_check():

@@ -7,7 +7,7 @@ Verifies each piece of evidence using:
 - Tier 2: Domain Trust Scoring
 - Tier 3: Web Consensus Analysis (with batching)
 """
-from typing import Literal
+from typing import Literal, List
 from pydantic import BaseModel, Field
 
 from ..schemas import CourtroomState, VerifiedEvidence
