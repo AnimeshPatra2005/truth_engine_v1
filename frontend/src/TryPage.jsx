@@ -1,39 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { FaPlus, FaHistory, FaFileUpload, FaPaperPlane, FaRobot, FaHome, FaTrash } from 'react-icons/fa';
+import { FaPlus, FaHistory, FaFileUpload, FaPaperPlane, FaRobot, FaHome, FaTrash, FaComments } from 'react-icons/fa';
 import './TryPage.css';
 import ResultsDisplay from './ResultsDisplay';
+import ExpertChat from './ExpertChat';
 
 function TryPage() {
-    // API URL from environment variable (or fallback to localhost)
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-    // State for managing the page
     const [history, setHistory] = useState([]);
     const [currentResult, setCurrentResult] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [progressMessage, setProgressMessage] = useState(""); // New: Dynamic progress
+    const [progressMessage, setProgressMessage] = useState("");
     const [inputText, setInputText] = useState("");
     const [fileName, setFileName] = useState("");
-    const [userQuery, setUserQuery] = useState(null); // Store the user's query/video to display
+    const [userQuery, setUserQuery] = useState(null);
+    const [expertChatOpen, setExpertChatOpen] = useState(false);
     const fileInputRef = useRef(null);
-    const pollingRef = useRef(null); // To cleanup polling on unmount
+    const pollingRef = useRef(null);
 
     // Load saved history when page loads
     useEffect(() => {
-        // Clear old history for fresh start (remove this line later if you want to keep history)
-        // localStorage.removeItem('truth_history'); 
         const savedHistory = JSON.parse(localStorage.getItem('truth_history') || '[]');
         setHistory(savedHistory);
 
         return () => {
-            // Cleanup polling on unmount
             if (pollingRef.current) clearTimeout(pollingRef.current);
         };
     }, []);
 
-    // Clear everything and start fresh
     const startNewChat = () => {
         setCurrentResult(null);
         setInputText("");
@@ -266,7 +261,7 @@ function TryPage() {
                         </div>
                     )}
 
-                    {/* Show user's query/video as a message bubble */}
+                    {/* ALWAYS show user's query at top when present */}
                     {userQuery && (
                         <div className="user-message-container">
                             <div className="user-message">
@@ -294,7 +289,20 @@ function TryPage() {
                         </div>
                     )}
 
-                    {currentResult && currentResult.verdict && <ResultsDisplay verdict={currentResult.verdict} />}
+                    {/* Results with Ask Expert button */}
+                    {currentResult && currentResult.verdict && (
+                        <>
+                            <ResultsDisplay verdict={currentResult.verdict} />
+
+                            {/* Ask Expert Button */}
+                            <div className="ask-expert-container">
+                                <button className="ask-expert-btn" onClick={() => setExpertChatOpen(true)}>
+                                    <FaComments />
+                                    <span>Still have doubts? Ask the Expert</span>
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Input bar at the bottom */}
@@ -336,6 +344,14 @@ function TryPage() {
                     </p>
                 </div>
             </main>
+
+            {/* Expert Chat Sidebar */}
+            <ExpertChat
+                isOpen={expertChatOpen}
+                onClose={() => setExpertChatOpen(false)}
+                caseId={currentResult?.case_id}
+                analysisData={currentResult}
+            />
         </div>
     );
 }
