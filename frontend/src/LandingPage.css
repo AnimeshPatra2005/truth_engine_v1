@@ -4,6 +4,14 @@
 
 :root {
     --split-rotation: 90deg;
+
+    /* Fluid spacing variables - scale with root font-size */
+    --spacing-xs: 0.5rem;
+    --spacing-sm: 1rem;
+    --spacing-md: 2rem;
+    --spacing-lg: 4rem;
+    --spacing-xl: 6rem;
+    --spacing-xxl: 8rem;
 }
 
 * {
@@ -13,6 +21,8 @@
 }
 
 html {
+    /* Fluid typography: scales from ~10px at 320px to ~16px at 1920px viewport */
+    font-size: clamp(10px, calc(8px + 0.5vw), 18px);
     margin: 0;
     padding: 0;
     width: 100%;
@@ -183,8 +193,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-top: 8rem;
-    /* Offset for fixed navbar to center content visually */
+    padding-top: var(--spacing-xxl);
+    /* Offset for fixed navbar - now scales */
 }
 
 .hero-content {
@@ -198,10 +208,10 @@ body {
     color: #fff;
     mix-blend-mode: difference;
     line-height: 1;
-    margin-bottom: 2rem;
+    margin-bottom: var(--spacing-md);
     font-family: 'Inter', 'Segoe UI', sans-serif;
-    margin-left: 1.35rem;
-
+    margin-left: var(--spacing-sm);
+    /* Push slightly right - now scales */
 }
 
 .hero-quote {
@@ -209,13 +219,14 @@ body {
     font-style: italic;
     color: #fff;
     mix-blend-mode: difference;
-    margin-bottom: 3rem;
+    margin-bottom: var(--spacing-lg);
+    /* Now scales */
     letter-spacing: 0.02em;
 }
 
 .hero-actions {
     display: flex;
-    gap: 1rem;
+    gap: var(--spacing-sm);
     justify-content: center;
 }
 
@@ -559,7 +570,8 @@ body {
     }
 
     .step-arrow {
-        transform: rotate(90deg);
+        display: none;
+        /* Hide arrows on mobile - numbered steps show flow clearly */
     }
 
     .step-card {
