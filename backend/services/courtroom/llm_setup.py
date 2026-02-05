@@ -47,10 +47,10 @@ llm_judge = ChatGoogleGenerativeAI(
     thinking_level="high"
 )
 
-# Fallback model: Very stable, generous free tier limits
+# Fallback model: Gemini 3 Pro for when Flash preview hits rate limits
 llm_fallback = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"),
+    model="gemini-3-pro-preview",
+    google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),  # Use SEARCH key to balance load
     temperature=0
 )
 
