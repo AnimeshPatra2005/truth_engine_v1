@@ -56,9 +56,14 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
         result = analyze_text(transcript)
         
         # Store success result
-        # Frontend expects {verdict: ...} structure
+        # Extract case_id if present and add it to top level
+        case_id = result.get('case_id') if isinstance(result, dict) else None
+        
         job_results[job_id]["status"] = "complete"
-        job_results[job_id]["result"] = {"verdict": result}
+        job_results[job_id]["result"] = {
+            "verdict": result,
+            "case_id": case_id  # Add case_id at top level for frontend
+        }
         job_results[job_id]["progress"] = "Analysis complete"
         job_results[job_id]["logs"].append("Analysis finished successfully")
 
