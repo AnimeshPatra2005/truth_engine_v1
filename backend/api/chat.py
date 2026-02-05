@@ -1,12 +1,19 @@
 """
 Chat API endpoint for Expert Chat feature.
-Handles follow-up questions about analyzed cases using Vector DB context.
+Uses ChromaDB for context retrieval + Gemini 3 Flash with thinking.
+Produces research-paper style citations [1], [2], [3].
 """
+import os
+import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
-from db.case_store import retrieve_context
-from services.llm_engine import get_llm_for_task
+from typing import Optional, List, Dict
+
+# Clear GOOGLE_API_KEY to prevent SDK auto-selection of wrong key
+os.environ.pop("GOOGLE_API_KEY", None)
+
+from db.case_store import retrieve_context, get_page_content
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 router = APIRouter()
 
@@ -18,194 +25,260 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    thought_process: str  # Gemini's step-by-step reasoning
-    sources: list
+    thought_process: str
+    citations: List[Dict]  # [{"number": 1, "url": "..."}, ...]
     trust_breakdown: dict
+
+
+# Initialize LLM with thinking + signature
+_llm = None
+
+def get_chat_llm():
+    """Lazy initialization of chat LLM."""
+    global _llm
+    if _llm is None:
+        _llm = ChatGoogleGenerativeAI(
+            model="gemini-3-flash-preview",
+            google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),
+            temperature=0.3,
+            thinking_level="medium",
+            include_thoughts=True,
+        )
+    return _llm
 
 
 @router.post("/chat", response_model=ChatResponse)
 async def expert_chat(request: ChatRequest):
     """
     Answer follow-up questions about a specific analysis case.
-    Uses Vector DB for context retrieval and Gemini 2.0 with Google Search grounding.
+    Returns research-paper style citations.
     """
     try:
-        # Step 1: Retrieve relevant context from Vector DB
-        context_data = retrieve_context(request.case_id, request.question, top_k=5)
+        # Quick greeting detection
+        simple_greetings = ['hi', 'hello', 'hey', 'hiya', 'greetings']
+        if request.question.strip().lower() in simple_greetings:
+            return ChatResponse(
+                answer="Hello! I'm the Expert on this fact-check analysis. Feel free to ask me specific questions about the claims, evidence, or sources from the analysis above!",
+                thought_process="Detected simple greeting - no context retrieval needed.",
+                citations=[],
+                trust_breakdown={}
+            )
+        
+        # Step 1: Retrieve relevant facts from Vector DB
+        try:
+            context_data = retrieve_context(request.case_id, request.question, top_k=5)
+        except Exception as db_error:
+            print(f"Vector DB error: {db_error}")
+            return ChatResponse(
+                answer="I'm having trouble accessing the analysis database. Please try again in a moment.",
+                thought_process=f"Database retrieval error: {str(db_error)}",
+                citations=[],
+                trust_breakdown={}
+            )
         
         if not context_data["facts"]:
             return ChatResponse(
                 answer="I don't have enough information from this analysis to answer that question.",
                 thought_process="No relevant facts found in the stored analysis.",
-                sources=[],
+                citations=[],
                 trust_breakdown={}
             )
         
-        # Step 2: Build context for Gemini
-        context_text = _build_context_prompt(context_data["facts"])
+        # Step 2: Retrieve relevant page content (top 5)
+        page_context = get_page_content(request.case_id, request.question, top_k=5)
         
-        # Step 3: Generate answer using Gemini with thinking + grounding
-        full_response = _generate_answer(request.question, context_text, context_data["facts"])
+        # Step 3: Build numbered source list
+        sources_map = _build_sources_map(context_data["facts"], page_context)
         
-        # Step 4: Parse thought process from answer
-        thought_process, answer = _parse_thinking_response(full_response)
+        # Step 4: Build context with numbered sources
+        context_text = _build_context_with_numbers(context_data["facts"], page_context, sources_map)
         
-        # Step 5: Extract sources
-        sources = _extract_sources(context_data["facts"])
+        # Step 5: Generate answer using Gemini 3 with thinking
+        try:
+            response = _generate_answer(request.question, context_text, sources_map)
+        except Exception as gemini_error:
+            error_msg = str(gemini_error)
+            if "429" in error_msg or "quota" in error_msg.lower() or "rate" in error_msg.lower():
+                return ChatResponse(
+                    answer="I'm experiencing high demand right now. Please wait a moment and try again.",
+                    thought_process=f"Rate limit reached: {error_msg}",
+                    citations=[],
+                    trust_breakdown=context_data["trust_breakdown"]
+                )
+            raise
+        
+        # Step 6: Parse response and extract used citations
+        thought_process, answer = _parse_response(response)
+        used_citations = _extract_used_citations(answer, sources_map)
+        
+        # Sources returned as structured data - frontend renders as buttons
         
         return ChatResponse(
             answer=answer,
             thought_process=thought_process,
-            sources=sources,
+            citations=used_citations,
             trust_breakdown=context_data["trust_breakdown"]
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"Chat error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
 
-def _build_context_prompt(facts: list) -> str:
-    """Build context from retrieved facts"""
-    context_parts = []
+def _build_sources_map(facts: list, pages: list) -> Dict[int, Dict]:
+    """Build a numbered map of all unique sources."""
+    sources_map = {}
+    seen_urls = set()
+    counter = 1
     
-    for idx, fact in enumerate(facts, 1):
+    # Add fact sources
+    for fact in facts:
+        url = fact.get('source_url', '')
+        if url and url not in seen_urls:
+            sources_map[counter] = {
+                "url": url,
+                "trust_score": fact.get('trust_score', 'Low'),
+                "type": "fact"
+            }
+            seen_urls.add(url)
+            counter += 1
+    
+    # Add page sources
+    for page in pages:
+        url = page.get('url', '')
+        if url and url not in seen_urls:
+            sources_map[counter] = {
+                "url": url,
+                "trust_score": "Medium",
+                "type": "page"
+            }
+            seen_urls.add(url)
+            counter += 1
+    
+    return sources_map
+
+
+def _build_context_with_numbers(facts: list, pages: list, sources_map: Dict[int, Dict]) -> str:
+    """Build context with numbered source references."""
+    
+    # Create reverse lookup: url -> number
+    url_to_number = {v["url"]: k for k, v in sources_map.items()}
+    
+    context_parts = []
+    context_parts.append("=== EVIDENCE FROM ANALYSIS ===\n")
+    
+    # Add facts with source numbers
+    for fact in facts:
+        url = fact.get('source_url', '')
+        source_num = url_to_number.get(url, "?")
         context_parts.append(
-            f"[Fact {idx}] ({fact['trust_score']} trust)\n"
+            f"[Source {source_num}] ({fact['trust_score']} trust)\n"
             f"Claim: {fact['claim_text']}\n"
             f"Evidence: {fact['fact_text']}\n"
-            f"Source: {fact['source_url']}\n"
         )
+    
+    # Add page content with source numbers (limit each to ~5000 chars)
+    if pages:
+        context_parts.append("\n=== ADDITIONAL SOURCE CONTENT ===\n")
+        for page in pages:
+            url = page.get('url', '')
+            source_num = url_to_number.get(url, "?")
+            content = page.get('content', '')[:5000]  # Limit per page
+            context_parts.append(
+                f"[Source {source_num}] Content:\n{content}\n---\n"
+            )
+    
+    # Add source reference list
+    context_parts.append("\n=== SOURCE REFERENCE LIST ===\n")
+    for num, source in sources_map.items():
+        context_parts.append(f"[{num}]: {source['url']}\n")
     
     return "\n".join(context_parts)
 
 
-def _generate_answer(question: str, context: str, facts: list) -> str:
-    """
-    Generate answer using Gemini 3 Flash with Google Search grounding.
-    Returns answer with thought process (thought signatures).
-    """
-    import google.generativeai as genai
-    import os
+def _generate_answer(question: str, context: str, sources_map: Dict) -> dict:
+    """Generate answer using LangChain Gemini with thinking."""
     
-    # Collect all unique supporting URLs from high-trust sources
-    grounding_urls = set()
-    for fact in facts:
-        if fact['trust_score'] in ["High", "Medium"]:
-            grounding_urls.update(fact.get('supporting_urls', []))
-            if fact.get('source_url'):
-                grounding_urls.add(fact['source_url'])
-    
-    grounding_urls = list(grounding_urls)[:10]  # Limit to 10 URLs
-    
-    prompt = f"""You are an expert fact-checker assistant answering follow-up questions about a previous analysis.
+    prompt = f"""You are an expert fact-checker assistant answering questions about a previous analysis.
 
-CONTEXT FROM ANALYSIS:
 {context}
-
-GROUNDING SOURCES AVAILABLE:
-{', '.join(grounding_urls) if grounding_urls else 'None'}
 
 USER QUESTION: {question}
 
 INSTRUCTIONS:
-1. Analyze what information you need to answer this question
-2. Use the provided context AND perform a Google Search if needed for additional verification
-3. Prioritize High trust sources over Medium/Low
-4. If multiple facts are relevant, synthesize them clearly
-5. Be concise but thorough (3-4 sentences)
-6. Cite specific sources by URL
+1. Answer the question using ONLY the provided context
+2. Use NUMBERED CITATIONS like [1], [2], [3] to cite sources
+3. Only cite sources you ACTUALLY USE in your answer
+4.Try to give more data and facts driven answer from the sources.
+5. Be concise but thorough (3-5 sentences)
+6. Do NOT include URLs inline - only use [1], [2] style numbers
+7. Do NOT add a reference list - I will add it automatically
 
-Think step-by-step, then provide your final answer."""
-    
-    try:
-        # Configure Gemini with grounding
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        
-        # Use Gemini 3 Flash (preview)
-        model = genai.GenerativeModel(
-            model_name='gemini-3-flash-preview',
-            generation_config={
-                "temperature": 0.3,
-                "top_p": 0.95,
-                "max_output_tokens": 2048,
-                "thinking_level": "medium"  # Enable thought signatures
-            }
-        )
-        
-        # Enable Google Search grounding
-        tools = [{'google_search': {}}]
-        
-        response = model.generate_content(
-            prompt,
-            tools=tools,
-            tool_config={'function_calling_config': {'mode': 'AUTO'}}
-        )
-        
-        # Extract thought process and answer
-        full_response = response.text
-        
-        # Gemini 3 Flash includes thought signatures in response
-        # We want to return both for transparency
-        return full_response
-        
-    except Exception as e:
-        print(f"Gemini 3 Flash error: {e}")
-        # Fallback to basic LLM without grounding
-        llm = get_llm_for_task("chat")
-        response = llm.invoke(prompt)
-        return response.content if hasattr(response, 'content') else str(response)
+Think step-by-step, then provide your final answer with citations."""
+
+    llm = get_chat_llm()
+    response = llm.invoke(prompt)
+    return response
 
 
-def _parse_thinking_response(full_response: str) -> tuple[str, str]:
-    """
-    Parse Gemini 2.0 Flash Thinking response into thought process and final answer.
-    The model outputs thinking first, then the answer.
-    """
-    # Gemini Thinking model separates thought process from answer
-    # Look for common markers
-    markers = ["**Final Answer:**", "**Answer:**", "Final answer:", "Answer:"]
+def _parse_response(response) -> tuple[str, str]:
+    """Parse LangChain response into thought process and answer."""
+    content = response.content
     
     thought_process = ""
-    answer = full_response
+    answer = ""
     
-    for marker in markers:
-        if marker in full_response:
-            parts = full_response.split(marker, 1)
-            thought_process = parts[0].strip()
-            answer = parts[1].strip()
-            break
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict):
+                if part.get('type') == 'thinking':
+                    thought_process = part.get('thinking', '')[:500]
+                elif part.get('type') == 'text':
+                    answer = part.get('text', '')
+            elif isinstance(part, str):
+                answer = part
+    elif isinstance(content, str):
+        answer = content
+        thought_process = "Processed query and generated response."
     
-    # If no marker found, assume entire response is the answer
-    # and thinking is implicit
+    if not answer:
+        answer = str(content)
+    
     if not thought_process:
         thought_process = "Analyzed context and formulated response."
     
     return thought_process, answer
 
 
-def _extract_sources(facts: list) -> list:
-    """Extract unique sources with metadata"""
-    sources = []
-    seen_urls = set()
+def _extract_used_citations(answer: str, sources_map: Dict) -> List[Dict]:
+    """Extract only the citation numbers actually used in the answer."""
+    used = []
+    seen_nums = set()
     
-    for fact in facts:
-        url = fact.get('source_url', '')
-        if url and url not in seen_urls:
-            sources.append({
-                "url": url,
-                "trust_score": fact.get('trust_score', 'Low'),
-                "claim": fact.get('claim_text', '')[:100] + "..."
-            })
-            seen_urls.add(url)
-        
-        # Also add supporting URLs
-        for sup_url in fact.get('supporting_urls', []):
-            if sup_url and sup_url not in seen_urls:
-                sources.append({
-                    "url": sup_url,
-                    "trust_score": fact.get('trust_score', 'Low'),
-                    "claim": "Consensus source"
+    # Find all numbers inside brackets - handles both [1] and [1, 2, 3] formats
+    # First find all bracketed content
+    bracket_pattern = r'\[([^\]]+)\]'
+    brackets = re.findall(bracket_pattern, answer)
+    
+    for content in brackets:
+        # Extract all numbers from each bracket
+        numbers = re.findall(r'\d+', content)
+        for num_str in numbers:
+            num = int(num_str)
+            if num in sources_map and num not in seen_nums:
+                used.append({
+                    "number": num,
+                    "url": sources_map[num]["url"],
+                    "trust_score": sources_map[num]["trust_score"]
                 })
-                seen_urls.add(sup_url)
+                seen_nums.add(num)
     
-    return sources[:10]  # Limit to 10 sources
+    # Sort by number
+    used.sort(key=lambda x: x["number"])
+    return used
+
+# Citations are now rendered as buttons in the frontend (ExpertChat.jsx)
