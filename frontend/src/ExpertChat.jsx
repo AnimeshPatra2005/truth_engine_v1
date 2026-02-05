@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { FaTimes, FaPaperPlane, FaRobot, FaUser, FaSpinner } from 'react-icons/fa';
+import { FaTimes, FaPaperPlane, FaRobot, FaUser, FaSpinner, FaBrain, FaLink } from 'react-icons/fa';
 import './ExpertChat.css';
 
 function ExpertChat({ isOpen, onClose, caseId, analysisData }) {
@@ -23,7 +23,7 @@ function ExpertChat({ isOpen, onClose, caseId, analysisData }) {
     }, [isOpen]);
 
     const handleSendMessage = async () => {
-        if (!inputText.trim() || loading) return;
+        if (!inputText.trim() || loading || !caseId) return;
 
         const userMessage = inputText.trim();
         setInputText('');
@@ -32,19 +32,42 @@ function ExpertChat({ isOpen, onClose, caseId, analysisData }) {
         setLoading(true);
 
         try {
-            setTimeout(() => {
-                setMessages(prev => [...prev, {
-                    role: 'assistant',
-                    content: 'The Expert Chat backend is still being built. This is a placeholder response.'
-                }]);
-                setLoading(false);
-            }, 1000);
+            const response = await fetch(`${API_URL}/api/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    case_id: caseId,
+                    question: userMessage
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // Map citations to sources format for display
+            const sources = (data.citations || []).map(cite => ({
+                number: cite.number,
+                url: cite.url,
+                trust_score: cite.trust_score || 'Medium'
+            }));
+
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: data.answer,
+                thoughtProcess: data.thought_process,
+                sources: sources,
+                trustBreakdown: data.trust_breakdown || {}
+            }]);
         } catch (err) {
             console.error('Chat error:', err);
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: 'Sorry, I encountered an error. Please try again.'
+                content: `Sorry, I encountered an error: ${err.message}. Please try again.`
             }]);
+        } finally {
             setLoading(false);
         }
     };
@@ -75,7 +98,39 @@ function ExpertChat({ isOpen, onClose, caseId, analysisData }) {
                                 {msg.role === 'user' ? <FaUser /> : <FaRobot />}
                             </div>
                             <div className="message-bubble">
-                                {msg.content}
+                                {/* Thought Process removed from display - still maintained for context */}
+
+                                {/* Main Answer */}
+                                <div className="answer-content">
+                                    {msg.content}
+                                </div>
+
+                                {/* Sources (if available) */}
+                                {msg.sources && msg.sources.length > 0 && (
+                                    <div className="sources-section">
+                                        <div className="sources-header">
+                                            <FaLink className="link-icon" />
+                                            <span>Sources ({msg.sources.length})</span>
+                                        </div>
+                                        <div className="sources-list">
+                                            {msg.sources.map((source, sidx) => (
+                                                <a
+                                                    key={sidx}
+                                                    href={source.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`source-item trust-${source.trust_score.toLowerCase()}`}
+                                                >
+                                                    <span className="citation-number">[{sidx + 1}]</span>
+                                                    <span className="trust-badge">{source.trust_score}</span>
+                                                    <span className="source-text">
+                                                        {new URL(source.url).hostname}
+                                                    </span>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -86,6 +141,7 @@ function ExpertChat({ isOpen, onClose, caseId, analysisData }) {
                             </div>
                             <div className="message-bubble">
                                 <FaSpinner className="typing-spinner" />
+                                <span style={{ marginLeft: '10px' }}>Thinking...</span>
                             </div>
                         </div>
                     )}
@@ -96,16 +152,16 @@ function ExpertChat({ isOpen, onClose, caseId, analysisData }) {
                     <input
                         type="text"
                         className="expert-chat-input"
-                        placeholder="Ask a question..."
+                        placeholder={caseId ? "Ask a question..." : "No analysis loaded"}
                         value={inputText}
                         onChange={(e) => setInputText(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                        disabled={loading}
+                        disabled={loading || !caseId}
                     />
                     <button
                         className="expert-send-btn"
                         onClick={handleSendMessage}
-                        disabled={loading || !inputText.trim()}
+                        disabled={loading || !inputText.trim() || !caseId}
                     >
                         <FaPaperPlane />
                     </button>

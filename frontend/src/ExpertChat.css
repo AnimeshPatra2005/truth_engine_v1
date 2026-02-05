@@ -134,11 +134,14 @@
 }
 
 .message-bubble {
-    max-width: 75%;
+    max-width: 85%;
     padding: 0.75rem 1rem;
     border-radius: 12px;
     line-height: 1.5;
     font-size: 0.95rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
 }
 
 .expert-message.assistant .message-bubble {
@@ -215,6 +218,125 @@
 .expert-send-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* THOUGHT SIGNATURE SECTION */
+.thought-signature {
+    background: rgba(168, 199, 250, 0.08);
+    border-left: 3px solid var(--accent-blue);
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    border-radius: 6px;
+}
+
+.thought-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    margin-bottom: 0.5rem;
+}
+
+.brain-icon {
+    font-size: 1rem;
+}
+
+.thought-content {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.answer-content {
+    color: var(--text-primary);
+    line-height: 1.6;
+    word-break: break-word;
+}
+
+/* SOURCES SECTION */
+.sources-section {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sources-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.link-icon {
+    font-size: 0.85rem;
+}
+
+.sources-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.source-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    text-decoration: none;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.source-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateX(3px);
+}
+
+.citation-number {
+    font-weight: 600;
+    color: var(--accent-blue);
+    font-size: 0.75rem;
+    min-width: 24px;
+}
+
+.trust-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.source-item.trust-high .trust-badge {
+    background: rgba(52, 168, 83, 0.2);
+    color: #34a853;
+}
+
+.source-item.trust-medium .trust-badge {
+    background: rgba(251, 188, 4, 0.2);
+    color: #fbbc04;
+}
+
+.source-item.trust-low .trust-badge {
+    background: rgba(234, 67, 53, 0.2);
+    color: #ea4335;
+}
+
+.source-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 @media (max-width: 768px) {
