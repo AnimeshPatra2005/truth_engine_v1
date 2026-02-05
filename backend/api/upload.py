@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
 from pydantic import BaseModel
-from services.transcriber import transcribe_video
+from services.media_engine import process_video
 from services.llm_engine import analyze_text
 from core.config import settings
 import shutil
@@ -26,22 +26,30 @@ class TextAnalysisRequest(BaseModel):
 def run_analysis_background(job_id: str, transcript: str = None, file_path: str = None):
     """Background task handler for analysis workflow"""
     try:
+        visual_analysis = None
+        
         if file_path:
-            job_results[job_id]["progress"] = "Transcribing video..."
-            job_results[job_id]["logs"].append("Started transcription...")
+            job_results[job_id]["progress"] = "Processing video with Gemini..."
+            job_results[job_id]["logs"].append("Starting Gemini video processing...")
             start_time = time.time()
             
-            # Transcribe
-            transcript = transcribe_video(file_path)
+            # Use new Gemini-powered media engine
+            media_result = process_video(file_path)
             
-            if transcript.startswith("Error"):
-                raise Exception(transcript)
-                
+            if media_result.get("error"):
+                raise Exception(media_result["transcript"])
+            
+            transcript = media_result["transcript"]
+            visual_analysis = media_result.get("visual_analysis")
+            
             elapsed = time.time() - start_time
-            job_results[job_id]["logs"].append(f"Transcription complete in {elapsed:.1f}s")
+            job_results[job_id]["logs"].append(f"Video processing complete in {elapsed:.1f}s")
             job_results[job_id]["transcript"] = transcript
             
-            # Clean up the uploaded file after transcription
+            if visual_analysis:
+                job_results[job_id]["logs"].append(f"Visual integrity: {visual_analysis.get('overall_visual_integrity', 'unknown')}")
+            
+            # Clean up the uploaded file after processing
             try:
                 os.remove(file_path)
                 job_results[job_id]["logs"].append("Cleaned up uploaded file")
@@ -62,7 +70,8 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
         job_results[job_id]["status"] = "complete"
         job_results[job_id]["result"] = {
             "verdict": result,
-            "case_id": case_id  # Add case_id at top level for frontend
+            "case_id": case_id,  # Add case_id at top level for frontend
+            "visual_analysis": visual_analysis  # NEW: Include visual correlation data
         }
         job_results[job_id]["progress"] = "Analysis complete"
         job_results[job_id]["logs"].append("Analysis finished successfully")

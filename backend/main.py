@@ -3,15 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.upload import router as upload_router
 from api.chat import router as chat_router
 from services.run_pipeline import run_full_pipeline
-from services.transcriber import load_whisper_model
 from db.case_store import init_collection
 import uvicorn
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load Machine Learning models and initialize Vector DB on startup
-    load_whisper_model()
+    # Initialize Vector DB on startup (Whisper removed - using Gemini now)
     init_collection()
     print("✓ Vector DB initialized")
     yield
