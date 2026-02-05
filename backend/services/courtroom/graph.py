@@ -6,6 +6,7 @@ FLOW:
   Decomposer → [claims < 5?] → Advocate (with extras) → Lead Promoter → Advocate (standard) → Fact Checker → Judge → Archive
               → [claims >= 5] → Advocate (standard) → Fact Checker → Judge → Archive
 """
+import uuid
 from langgraph.graph import StateGraph, END, START
 
 from .schemas import CourtroomState
@@ -40,12 +41,15 @@ def route_after_decompose(state: CourtroomState) -> str:
 def archive_case_node(state: CourtroomState):
     """Save case to Vector DB after analysis completes"""
     final_verdict = state.get('final_verdict')
-    if final_verdict:
+    case_id = state.get('case_id')  # Use pre-generated case_id
+    
+    if final_verdict and case_id:
         try:
             verdict_dict = final_verdict.dict() if hasattr(final_verdict, 'dict') else final_verdict
-            case_id = save_case(verdict_dict)
-            print(f"\n   ARCHIVED: Case saved to Vector DB with ID {case_id}")
-            return {"case_id": case_id}
+            verdict_dict['case_id'] = case_id  # Ensure case_id is in verdict
+            saved_id = save_case(verdict_dict, case_id)  # Pass existing case_id
+            print(f"\n   ARCHIVED: Case saved to Vector DB with ID {saved_id}")
+            return {"case_id": saved_id}
         except Exception as e:
             print(f"\n   ARCHIVE ERROR: Failed to save case - {e}")
             return {}
@@ -101,16 +105,20 @@ app = workflow.compile()
 def analyze_text(transcript: str) -> dict:
     """Wrapper function to analyze transcript and return verdict result with case_id"""
     try:
-        result = app.invoke({"transcript": transcript})
-        verdict = result.get('final_verdict', {})
-        case_id = result.get('case_id', None)
+        # Generate case_id upfront so it's available throughout pipeline
+        case_id = str(uuid.uuid4())
+        print(f"\n   PIPELINE START: Generated case_id {case_id}")
         
-        if case_id:
+        result = app.invoke({"transcript": transcript, "case_id": case_id})
+        verdict = result.get('final_verdict', {})
+        final_case_id = result.get('case_id', case_id)
+        
+        if final_case_id:
             if isinstance(verdict, dict):
-                verdict['case_id'] = case_id
+                verdict['case_id'] = final_case_id
             else:
                 verdict_dict = verdict.dict() if hasattr(verdict, 'dict') else {}
-                verdict_dict['case_id'] = case_id
+                verdict_dict['case_id'] = final_case_id
                 return verdict_dict
         
         return verdict
