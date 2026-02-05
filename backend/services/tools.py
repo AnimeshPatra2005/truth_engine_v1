@@ -71,6 +71,7 @@ def search_web(query: str, intent: str = "general", max_retries: int = 3) -> lis
                     "url": result.get("url", ""),
                     "snippet": result.get("content", ""),  
                     "score": score,
+                    "raw_content": result.get("raw_content", ""),  # Full page for ChromaDB storage
                 })
 
             print(f"   Found {len(clean_results)} relevant results")

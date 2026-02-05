@@ -252,6 +252,8 @@ def evidence_extraction_node(state: CourtroomState, include_extras: bool = True)
             print(f"          Defender search failed: {e}")
             defender_results = []
         
+       
+        
         # 2. Extract Evidence (1 API call)
         print(f"\n       STEP 2: Extract Evidence {'+ Extras' if include_extras else '(Standard)'}")
         

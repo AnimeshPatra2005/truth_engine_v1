@@ -17,6 +17,7 @@ from ..utils import (
     check_google_fact_check_tool, consensus_search_tool
 )
 from ..llm_setup import get_llm_for_task
+from db.case_store import save_page_content
 
 
 # ==============================================================================
@@ -337,6 +338,16 @@ def three_tier_fact_check_node_batched(state: CourtroomState):
                 if domain_trust == "High" or is_suggested:
                     tier2_details = f"Domain Trust: {domain_trust}, Matches Suggested: {is_suggested}"
                     print(f"          TIER 2 VERIFIED: {tier2_details}")
+                    
+                    # Store Tier 2 verified fact for Expert Chat
+                    case_id = state.get('case_id', '')
+                    if case_id:
+                        try:
+                            # Store the fact with its source URL (we verified the domain is trusted)
+                            save_page_content(source_url, key_fact, case_id, f"Tier2-{side_name}")
+                        except:
+                            pass  # Don't break verification if storage fails
+                    
                     verified_list.append(VerifiedEvidence(
                         source_url=source_url,
                         key_fact=key_fact,
@@ -476,6 +487,23 @@ def three_tier_fact_check_node_batched(state: CourtroomState):
                         verification_details=details,
                         supporting_urls=consensus_analysis.get('majority_urls', [])
                     )
+                    
+                    # Store Tier 3 majority URLs for Expert Chat (using search snippets)
+                    case_id = state.get('case_id', '')
+                    if case_id and trust_score in ['High', 'Medium']:
+                        majority_urls = consensus_analysis.get('majority_urls', [])
+                        search_results = tier3_search_results.get(evidence_id, [])
+                        
+                        # Create URL to snippet map
+                        url_to_snippet = {r.get('url', ''): r.get('snippet', '') for r in search_results}
+                        
+                        for url in majority_urls:
+                            snippet = url_to_snippet.get(url, '')
+                            if snippet:
+                                try:
+                                    save_page_content(url, snippet, case_id, f"Tier3-Consensus-{side}")
+                                except:
+                                    pass  # Don't break verification if storage fails
                     
                     # Add to appropriate list
                     if side == 'prosecutor':
