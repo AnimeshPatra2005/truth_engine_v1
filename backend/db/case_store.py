@@ -12,14 +12,15 @@ CHROMA_DB_PATH = "./chroma_db"
 
 client: Optional[chromadb.Client] = None
 collection: Optional[chromadb.Collection] = None
+page_collection: Optional[chromadb.Collection] = None  # For full page content
 
 
 def init_collection():
     """
-    Initialize ChromaDB collection on startup.
+    Initialize ChromaDB collections on startup.
     Creates persistent storage in ./chroma_db directory.
     """
-    global client, collection
+    global client, collection, page_collection
     
     os.makedirs(CHROMA_DB_PATH, exist_ok=True)
     
@@ -36,14 +37,24 @@ def init_collection():
         metadata={"description": "Stored fact-check analysis cases for Expert Chat"}
     )
     
-    print(f" ChromaDB initialized: {collection.count()} cases stored")
+    # New collection for full page content
+    page_collection = client.get_or_create_collection(
+        name="truth_engine_pages",
+        metadata={"description": "Full web page content for Expert Chat context"}
+    )
+    
+    print(f" ChromaDB initialized: {collection.count()} facts, {page_collection.count()} pages stored")
     return collection
 
 
-def save_case(verdict_data: Dict) -> str:
+def save_case(verdict_data: Dict, case_id: Optional[str] = None) -> str:
     """
     Store analysis results with embeddings.
     Each fact is stored separately for fine-grained semantic retrieval.
+    
+    Args:
+        verdict_data: The verdict dictionary with claim analyses
+        case_id: Optional pre-generated case ID (if None, generates new one)
     
     Returns:
         case_id: UUID for this case
@@ -51,7 +62,9 @@ def save_case(verdict_data: Dict) -> str:
     if collection is None:
         raise RuntimeError("ChromaDB not initialized. Call init_collection() first.")
     
-    case_id = str(uuid.uuid4())
+    # Use provided case_id or generate new one
+    if not case_id:
+        case_id = str(uuid.uuid4())
     
     documents = []
     metadatas = []
@@ -166,3 +179,114 @@ def retrieve_context(case_id: str, question: str, top_k: int = 5) -> Dict:
         "facts": facts_sorted,
         "trust_breakdown": trust_counts
     }
+
+
+def save_page_content(url: str, content: str, case_id: str, title: str = "") -> bool:
+    """
+    Store full web page content for later retrieval by Expert Chat.
+    Splits content into manageable chunks to avoid memory errors.
+    
+    Args:
+        url: Source URL (used as unique identifier)
+        content: Full page text content
+        case_id: Associated case ID
+        title: Page title (optional)
+        
+    Returns:
+        bool: Success status
+    """
+    if page_collection is None:
+        print("Warning: page_collection not initialized")
+        return False
+        
+    if not content or len(content.strip()) < 100:
+        return False  # Skip pages with minimal content
+    
+    try:
+        # Simple chunking strategy to avoid "bad allocation" errors
+        # Embedding models often have token limits (e.g. 512 tokens), 
+        # and large strings cause memory spikes in ONNX runtime.
+        CHUNK_SIZE = 2000
+        OVERLAP = 200
+        
+        chunks = []
+        if len(content) > CHUNK_SIZE:
+            for i in range(0, len(content), CHUNK_SIZE - OVERLAP):
+                chunks.append(content[i:i + CHUNK_SIZE])
+        else:
+            chunks = [content]
+            
+        documents = []
+        metadatas = []
+        ids = []
+        
+        for idx, chunk in enumerate(chunks):
+            documents.append(chunk)
+            metadatas.append({
+                "url": url,
+                "case_id": case_id,
+                "title": title,
+                "chunk_index": idx,
+                "total_chunks": len(chunks)
+            })
+            # Improve ID uniqueness
+            ids.append(f"{case_id}_{hash(url) % 10**8}_{idx}")
+        
+        # Check uniqueness just in case (optional, but good for safety)
+        # For now, relying on unique IDs should be enough or let Chroma handle duplicates (upsert behavior)
+        
+        page_collection.add(
+            documents=documents,
+            metadatas=metadatas,
+            ids=ids
+        )
+        print(f"       Saved page content ({len(chunks)} chunks): {url[:50]}...")
+        return True
+        
+    except Exception as e:
+        print(f"Error saving page content: {e}")
+        return False
+
+
+def get_page_content(case_id: str, question: str, top_k: int = 3) -> List[Dict]:
+    """
+    Semantic search for relevant page content within a case.
+    
+    Args:
+        case_id: UUID of the case 
+        question: User's question for semantic matching
+        top_k: Number of pages to retrieve
+    
+    Returns:
+        List of {url, title, content, relevance_score}
+    """
+    if page_collection is None:
+        return []
+    
+    try:
+        results = page_collection.query(
+            query_texts=[question],
+            n_results=top_k,
+            where={"case_id": case_id}
+        )
+        
+        if not results["ids"] or not results["ids"][0]:
+            return []
+        
+        pages = []
+        for idx in range(len(results["ids"][0])):
+            metadata = results["metadatas"][0][idx]
+            document = results["documents"][0][idx]
+            distance = results["distances"][0][idx] if "distances" in results else 0
+            
+            pages.append({
+                "url": metadata.get("url", ""),
+                "title": metadata.get("title", ""),
+                "content": document,
+                "relevance_score": 1 - distance
+            })
+        
+        return pages
+    except Exception as e:
+        print(f"Error retrieving page content: {e}")
+        return []
