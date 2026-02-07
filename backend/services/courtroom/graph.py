@@ -124,4 +124,5 @@ def analyze_text(transcript: str) -> dict:
         return verdict
     except Exception as e:
         print(f"Error analyzing text: {e}")
-        return {"error": str(e)}
+        # RAISE exception instead of returning error - allows proper error propagation
+        raise Exception(f"Analysis pipeline failed: {str(e)}")

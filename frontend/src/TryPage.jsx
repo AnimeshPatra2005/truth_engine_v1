@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { FaPlus, FaHistory, FaFileUpload, FaPaperPlane, FaRobot, FaHome, FaTrash, FaComments } from 'react-icons/fa';
+import { FaPlus, FaHistory, FaFileUpload, FaPaperPlane, FaRobot, FaHome, FaTrash, FaComments, FaSpinner } from 'react-icons/fa';
 import './TryPage.css';
 import ResultsDisplay from './ResultsDisplay';
 import ExpertChat from './ExpertChat';
@@ -16,6 +16,11 @@ function TryPage() {
     const [fileName, setFileName] = useState("");
     const [userQuery, setUserQuery] = useState(null);
     const [expertChatOpen, setExpertChatOpen] = useState(false);
+    const [visualExpanded, setVisualExpanded] = useState(false);
+    const [enableVisualAnalysis, setEnableVisualAnalysis] = useState(false);
+    const [errorMessage, setErrorMessage] = useState(null);
+    const [viewingHistoryItem, setViewingHistoryItem] = useState(null);  // For viewing history while loading
+    const [processingJob, setProcessingJob] = useState(null); // Track active job info {id, title, status}
     const fileInputRef = useRef(null);
     const pollingRef = useRef(null);
 
@@ -35,6 +40,13 @@ function TryPage() {
         setFileName("");
         setUserQuery(null);
         setProgressMessage("");
+        setEnableVisualAnalysis(false);
+        setErrorMessage(null);
+        setViewingHistoryItem(null);
+        // Don't clear processingJob here as user might want to start new while one runs (though rare)
+        // But for now, let's assume one job at a time for simplicity in UI
+        if (!loading) setProcessingJob(null);
+
         if (pollingRef.current) clearTimeout(pollingRef.current);
         if (fileInputRef.current) {
             fileInputRef.current.value = ""; // Clear file input
@@ -49,9 +61,14 @@ function TryPage() {
         }
     };
 
-    // Load a previous analysis from history
+    // Load a previous analysis from history (can be done while loading)
     const loadHistoryItem = (item) => {
+        console.log("DEBUG loadHistoryItem: item.data =", item.data);
+        console.log("DEBUG loadHistoryItem: visual_analysis =", item.data?.visual_analysis);
+        setViewingHistoryItem(item);  // Track we're viewing a history item
         setCurrentResult(item.data);
+        setErrorMessage(null);  // Clear any errors
+        setUserQuery({ type: 'history', content: item.title });  // Show the title
     };
 
     // Delete a specific history item
@@ -85,6 +102,7 @@ function TryPage() {
 
             if (statusData.status === 'complete') {
                 setLoading(false);
+                setProcessingJob(null); // Job done, remove from processing list
                 setProgressMessage("Complete!");
 
                 // Final result
@@ -104,11 +122,25 @@ function TryPage() {
                 });
 
                 setCurrentResult(resultData);
+                console.log("DEBUG: Full resultData:", resultData);
+                console.log("DEBUG: visual_analysis key exists?", 'visual_analysis' in resultData);
+                console.log("DEBUG: visual_analysis value:", resultData.visual_analysis);
 
             } else if (statusData.status === 'error') {
                 setLoading(false);
+                setProcessingJob(null); // Job failed, remove from processing list
                 setProgressMessage("");
-                alert(`Analysis failed: ${statusData.error || 'Unknown error occurred'}`);
+                setViewingHistoryItem(null);  // Clear history view
+
+                // Set error message for inline display
+                const errorMsg = statusData.error || 'Analysis failed due to an unknown error';
+                setErrorMessage(errorMsg);
+
+                // NEW: Check if we have partial results (like visual analysis) even on error
+                if (statusData.result && statusData.result.visual_analysis) {
+                    console.log("Showing partial result despite error");
+                    setCurrentResult(statusData.result);
+                }
             } else {
                 // Still processing
                 setProgressMessage(statusData.progress || "Processing...");
@@ -133,6 +165,7 @@ function TryPage() {
 
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("enable_visual_analysis", enableVisualAnalysis.toString());
 
         try {
             const response = await axios.post(
@@ -147,6 +180,7 @@ function TryPage() {
             // Start polling with job_id
             const { job_id } = response.data;
             setProgressMessage("Queued for analysis...");
+            setProcessingJob({ id: job_id, title: file.name, status: 'processing' });
             pollJobStatus(job_id, file.name);
 
             // Clear file input after successful upload
@@ -158,6 +192,7 @@ function TryPage() {
         } catch (err) {
             console.error("Upload error:", err);
             setLoading(false);
+            setProcessingJob(null);
             setProgressMessage("");
 
             if (err.response) {
@@ -189,14 +224,12 @@ function TryPage() {
             // Start polling with job_id
             const { job_id } = response.data;
             setProgressMessage("Queued for analysis...");
-            pollJobStatus(job_id, text.substring(0, 30) + "...");
-
-            // Clear input after successful submission
-            setInputText("");
-
+            const title = text.substring(0, 30) + "...";
+            setProcessingJob({ id: job_id, title: title, status: 'processing' });
         } catch (err) {
             console.error("Analysis error:", err);
             setLoading(false);
+            setProcessingJob(null);
             setProgressMessage("");
 
             if (err.response) {
@@ -223,10 +256,29 @@ function TryPage() {
 
                 <div className="history-list">
                     <p className="history-label">Recent</p>
+
+                    {/* Active Processing Job */}
+                    {processingJob && (
+                        <div
+                            className={`history-item ${!viewingHistoryItem ? 'active' : ''}`}
+                            onClick={() => {
+                                setViewingHistoryItem(null); // Return to live view
+                                setErrorMessage(null);
+                            }}
+                            style={{ borderLeft: '3px solid #667eea', background: 'rgba(102, 126, 234, 0.1)' }}
+                        >
+                            <FaSpinner className="history-icon fa-spin" style={{ animation: 'spin 1s linear infinite' }} />
+                            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                <span className="history-title" style={{ color: '#fff' }}>{processingJob.title}</span>
+                                <span style={{ fontSize: '0.75rem', color: '#a0a0a0' }}>Processing...</span>
+                            </div>
+                        </div>
+                    )}
+
                     {history.map((item) => (
                         <div
                             key={item.id}
-                            className="history-item"
+                            className={`history-item ${viewingHistoryItem?.id === item.id ? 'active' : ''}`}
                             onClick={() => loadHistoryItem(item)}
                         >
                             <FaHistory className="history-icon" />
@@ -277,8 +329,8 @@ function TryPage() {
                         </div>
                     )}
 
-                    {/* Show loading spinner during analysis */}
-                    {loading && (
+                    {/* Show loading spinner during analysis - ONLY when not viewing history */}
+                    {loading && !viewingHistoryItem && (
                         <div className="loading-container">
                             <div className="loading-spinner"></div>
                             <p className="loading-text">
@@ -289,10 +341,48 @@ function TryPage() {
                         </div>
                     )}
 
-                    {/* Results with Ask Expert button */}
+                    {/* Error display */}
+                    {errorMessage && !currentResult && (
+                        <div style={{
+                            background: 'rgba(220, 53, 69, 0.15)',
+                            border: '1px solid rgba(220, 53, 69, 0.5)',
+                            borderRadius: '12px',
+                            padding: '1.5rem',
+                            marginBottom: '1rem',
+                            textAlign: 'center'
+                        }}>
+                            <h3 style={{ color: '#dc3545', marginBottom: '0.5rem' }}>
+                                ❌ Analysis Failed
+                            </h3>
+                            <p style={{ color: '#e0e0e0', marginBottom: '1rem', fontSize: '0.95rem' }}>
+                                {errorMessage}
+                            </p>
+                            <button
+                                onClick={startNewChat}
+                                style={{
+                                    background: 'rgba(102, 126, 234, 0.8)',
+                                    border: 'none',
+                                    padding: '10px 24px',
+                                    borderRadius: '8px',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                Try Again
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Results with Visual Analysis and Ask Expert button */}
                     {currentResult && currentResult.verdict && (
                         <>
-                            <ResultsDisplay verdict={currentResult.verdict} />
+                            <ResultsDisplay
+                                verdict={currentResult.verdict}
+                                visualAnalysis={currentResult.visual_analysis}
+                            />
+
+
 
                             {/* Ask Expert Button */}
                             <div className="ask-expert-container">
@@ -307,6 +397,34 @@ function TryPage() {
 
                 {/* Input bar at the bottom */}
                 <div className="input-container">
+                    {/* Visual Analysis Toggle - Only shown when video file is selected */}
+                    {fileName && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            marginBottom: '10px',
+                            padding: '10px 15px',
+                            background: 'rgba(102, 126, 234, 0.15)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(102, 126, 234, 0.3)'
+                        }}>
+                            <input
+                                type="checkbox"
+                                id="visual-analysis-toggle"
+                                checked={enableVisualAnalysis}
+                                onChange={(e) => setEnableVisualAnalysis(e.target.checked)}
+                                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            <label htmlFor="visual-analysis-toggle" style={{ color: '#e0e0e0', cursor: 'pointer' }}>
+                                Enable Visual Analysis
+                                <span style={{ color: '#888', fontSize: '0.85rem', marginLeft: '5px' }}>
+                                    (compares video frames with transcript)
+                                </span>
+                            </label>
+                        </div>
+                    )}
+
                     <div className="input-bar">
                         {/* Hidden file input */}
                         <input

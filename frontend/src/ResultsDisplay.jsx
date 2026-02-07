@@ -116,8 +116,9 @@ function EvidenceSection({ prosecutorEvidence, defenderEvidence }) {
     );
 }
 
-function ResultsDisplay({ verdict }) {
+function ResultsDisplay({ verdict, visualAnalysis }) {
     const [showClaimAnalysis, setShowClaimAnalysis] = useState(false);
+    const [showVisualAnalysis, setShowVisualAnalysis] = useState(false);
 
     // Function to get verdict color and icon
     const getVerdictStyle = (status) => {
@@ -173,15 +174,29 @@ function ResultsDisplay({ verdict }) {
                     </div>
                 )}
 
-                {/* Claim-wise Verification Button */}
-                <div className="claim-wise-toggle">
+                {/* Toggle Buttons Row - Side by Side */}
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', marginTop: '1rem' }}>
+                    {/* Claim-wise Verification Button */}
                     <button
                         className="toggle-button"
                         onClick={() => setShowClaimAnalysis(!showClaimAnalysis)}
+                        style={{ minWidth: '200px', justifyContent: 'center' }}
                     >
                         <span>Claim wise verification</span>
                         {showClaimAnalysis ? <FaChevronUp /> : <FaChevronDown />}
                     </button>
+
+                    {/* Visual Analysis Button - Only shown for video analyses */}
+                    {visualAnalysis && (
+                        <button
+                            className="toggle-button"
+                            onClick={() => setShowVisualAnalysis(!showVisualAnalysis)}
+                            style={{ minWidth: '200px', justifyContent: 'center' }}
+                        >
+                            <span>Visual Analysis</span>
+                            {showVisualAnalysis ? <FaChevronUp /> : <FaChevronDown />}
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -218,6 +233,46 @@ function ResultsDisplay({ verdict }) {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Visual Analysis (Expandable) */}
+            {showVisualAnalysis && visualAnalysis && (
+                <div style={{
+                    background: 'rgba(30,30,40,0.9)',
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    marginTop: '1rem'
+                }}>
+                    <p style={{ color: '#a0a0a0', marginBottom: '1rem' }}>
+                        {visualAnalysis.summary}
+                    </p>
+
+                    {visualAnalysis.visual_elements?.map((visual, index) => (
+                        <div key={index} style={{
+                            padding: '0.75rem',
+                            marginBottom: '0.5rem',
+                            background: 'rgba(50,50,60,0.5)',
+                            borderRadius: '6px',
+                            borderLeft: `3px solid ${visual.status === 'matches' ? '#10b981' : visual.status === 'contradicts' ? '#ef4444' : '#f59e0b'}`
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                <span style={{ color: '#888', fontSize: '0.85rem' }}>{visual.timestamp}</span>
+                                <span style={{
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 'bold',
+                                    background: visual.status === 'matches' ? 'rgba(16,185,129,0.2)' : visual.status === 'contradicts' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)',
+                                    color: visual.status === 'matches' ? '#10b981' : visual.status === 'contradicts' ? '#ef4444' : '#f59e0b'
+                                }}>{visual.status?.toUpperCase()}</span>
+                            </div>
+                            <p style={{ color: '#e0e0e0', margin: 0 }}>{visual.description}</p>
+                            {visual.concern && visual.concern !== 'null' && (
+                                <p style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '0.5rem', fontStyle: 'italic' }}>⚠️ {visual.concern}</p>
+                            )}
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
