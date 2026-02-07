@@ -4,11 +4,13 @@ Enables semantic search and multi-source grounding for Expert Chat.
 """
 import os
 import uuid
+from datetime import datetime
 from typing import Optional, Dict, List
 import chromadb
 from chromadb.config import Settings
 
 CHROMA_DB_PATH = "./chroma_db"
+MAX_CASES = 20  # Only keep the 20 most recent cases
 
 client: Optional[chromadb.Client] = None
 collection: Optional[chromadb.Collection] = None
@@ -99,7 +101,8 @@ def save_case(verdict_data: Dict, case_id: Optional[str] = None) -> str:
                     "side": side,
                     "trust_score": trust_score,
                     "supporting_urls": ",".join(supporting_urls),
-                    "overall_verdict": overall_verdict
+                    "overall_verdict": overall_verdict,
+                    "created_at": datetime.now().isoformat()
                 })
                 ids.append(f"{case_id}_claim{claim_idx}_{side}_{ev_idx}")
     
@@ -110,8 +113,63 @@ def save_case(verdict_data: Dict, case_id: Optional[str] = None) -> str:
             ids=ids
         )
         print(f"Saved case {case_id}: {len(documents)} facts embedded")
+        
+        # Cleanup old cases to maintain MAX_CASES limit
+        cleanup_old_cases()
     
     return case_id
+
+
+def cleanup_old_cases():
+    """
+    Remove oldest cases when total exceeds MAX_CASES.
+    Keeps only the 20 most recent cases based on created_at timestamp.
+    """
+    if collection is None:
+        return
+    
+    try:
+        # Get all unique case_ids with their timestamps
+        all_data = collection.get(include=["metadatas"])
+        
+        if not all_data["ids"]:
+            return
+        
+        # Build case_id -> oldest_timestamp mapping
+        case_timestamps = {}
+        for metadata in all_data["metadatas"]:
+            case_id = metadata.get("case_id")
+            created_at = metadata.get("created_at", "1970-01-01T00:00:00")
+            
+            if case_id not in case_timestamps:
+                case_timestamps[case_id] = created_at
+            else:
+                # Keep the earliest timestamp for each case
+                if created_at < case_timestamps[case_id]:
+                    case_timestamps[case_id] = created_at
+        
+        # Sort cases by timestamp (newest first)
+        sorted_cases = sorted(case_timestamps.items(), key=lambda x: x[1], reverse=True)
+        
+        # If we have more than MAX_CASES, delete the oldest ones
+        if len(sorted_cases) > MAX_CASES:
+            cases_to_delete = [case_id for case_id, _ in sorted_cases[MAX_CASES:]]
+            
+            for old_case_id in cases_to_delete:
+                # Delete all documents with this case_id
+                collection.delete(where={"case_id": old_case_id})
+                
+                # Also delete from page_collection if it exists
+                if page_collection is not None:
+                    try:
+                        page_collection.delete(where={"case_id": old_case_id})
+                    except:
+                        pass
+            
+            print(f"Cleaned up {len(cases_to_delete)} old cases. Keeping {MAX_CASES} most recent.")
+    
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
 
 
 def retrieve_context(case_id: str, question: str, top_k: int = 5) -> Dict:
