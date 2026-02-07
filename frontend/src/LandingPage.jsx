@@ -305,11 +305,11 @@ function LandingPage() {
                         <div className="feature-card">
                             <div className="feature-icon">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM11 19.93C7.05 19.44 4 16.08 4 12C4 11.38 4.08 10.79 4.21 10.21L9 15L11 17V19.93ZM17.9 17.39C17.64 16.8 16.9 16.42 16.29 16.13L15 15.5V11.3C15 11.13 14.87 11 14.7 11H11.3C11.13 11 11 10.87 11 10.7V7.5C11 7.22 11.22 7 11.5 7H14.5C14.78 7 15 6.78 15 6.5V4.3C18.18 5.66 20.34 8.76 20.34 12.3C20.34 14.04 19.74 15.65 18.74 16.95L17.9 17.39Z" fill="currentColor" />
                                 </svg>
                             </div>
-                            <h3 className="feature-title">Real-Time Analysis</h3>
-                            <p className="feature-description">Get instant results as your video is processed with live progress updates</p>
+                            <h3 className="feature-title">Real-Time Knowledge</h3>
+                            <p className="feature-description">Leverages live internet access to verify claims against the very latest information</p>
                         </div>
 
                         <div className="feature-card">
@@ -326,23 +326,25 @@ function LandingPage() {
                         <div className="feature-card">
                             <div className="feature-icon">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
-                                    <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    <circle cx="8" cy="10" r="1.5" fill="currentColor" />
+                                    <circle cx="12" cy="10" r="1.5" fill="currentColor" />
+                                    <circle cx="16" cy="10" r="1.5" fill="currentColor" />
                                 </svg>
                             </div>
-                            <h3 className="feature-title">History Tracking</h3>
-                            <p className="feature-description">Access all your previous fact-checks with organized history and search</p>
+                            <h3 className="feature-title">Expert Chatbot</h3>
+                            <p className="feature-description">Chat with an AI expert that has complete knowledge of the entire analysis</p>
                         </div>
 
                         <div className="feature-card">
                             <div className="feature-icon">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
-                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" strokeWidth="2" />
+                                    <path d="M23 19C23 19.5304 22.7893 20.0391 22.4142 20.4142C22.0391 20.7893 21.5304 21 21 21H3C2.46957 21 1.96086 20.7893 1.58579 20.4142C1.21071 20.0391 1 19.5304 1 19V8C1 7.46957 1.21071 6.96086 1.58579 6.58579C1.96086 6.21071 2.46957 6 3 6H7L9 3H15L17 6H21C21.5304 6 22.0391 6.21071 22.4142 6.58579C22.7893 6.96086 23 7.46957 23 8V19Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    <circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                             </div>
-                            <h3 className="feature-title">Customizable Settings</h3>
-                            <p className="feature-description">Adjust verification sensitivity and source preferences to your needs</p>
+                            <h3 className="feature-title">Image Analysis</h3>
+                            <p className="feature-description">Advanced vision AI analyzes visual context and images within the video</p>
                         </div>
                     </div>
                 </div>
@@ -361,8 +363,8 @@ function LandingPage() {
                         <div className="step-card">
                             <div className="step-number">01</div>
                             <div className="step-content">
-                                <h3 className="step-title">Upload Video</h3>
-                                <p className="step-description">Drag and drop your video file or paste a URL. We support all major formats.</p>
+                                <h3 className="step-title">Upload Video or Query</h3>
+                                <p className="step-description">Drag and drop a video, paste a URL, or simply type a text query to get started.</p>
                             </div>
                             <div className="step-visual">
                                 <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
@@ -382,7 +384,7 @@ function LandingPage() {
                             <div className="step-number">02</div>
                             <div className="step-content">
                                 <h3 className="step-title">AI Processing</h3>
-                                <p className="step-description">Our AI extracts the transcript and analyzes every claim made in the video.</p>
+                                <p className="step-description">Our AI extracts transcripts, analyzes images, and verifies every claim found.</p>
                             </div>
                             <div className="step-visual">
                                 <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
@@ -401,8 +403,8 @@ function LandingPage() {
                         <div className="step-card">
                             <div className="step-number">03</div>
                             <div className="step-content">
-                                <h3 className="step-title">Get Results</h3>
-                                <p className="step-description">Receive detailed fact-check results with sources and confidence scores.</p>
+                                <h3 className="step-title">Get Results & Chat</h3>
+                                <p className="step-description">Receive detailed results and discuss them with our expert chatbot.</p>
                             </div>
                             <div className="step-visual">
                                 <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
