@@ -37,3 +37,7 @@ backend/services/__pycache__/tools.cpython-313.pyc
 backend/services/__pycache__/llm_engine.cpython-313.pyc
 backend/api/__pycache__/upload.cpython-313.pyc
 backend/__pycache__/main.cpython-313.pyc
+
+# Database
+*.sqlite3
+backend/chroma_db/
