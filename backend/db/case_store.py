@@ -4,10 +4,23 @@ Enables semantic search and multi-source grounding for Expert Chat.
 """
 import os
 import uuid
+import time
 from datetime import datetime
 from typing import Optional, Dict, List
 import chromadb
 from chromadb.config import Settings
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Configure Gemini
+if not os.getenv("GEMINI_API_KEY_SEARCH"):
+    print("WARNING: GEMINI_API_KEY_SEARCH not found in environment variables")
+else:
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY_SEARCH"))
+
+EMBEDDING_MODEL = "models/gemini-embedding-001"
 
 CHROMA_DB_PATH = "./chroma_db"
 MAX_CASES = 20  # Only keep the 20 most recent cases
@@ -34,6 +47,8 @@ def init_collection():
         )
     )
     
+    # We use a dummy embedding function or None because we handle embeddings manually
+    # to support different task types (RETRIEVAL_DOCUMENT vs QUESTION_ANSWERING)
     collection = client.get_or_create_collection(
         name="truth_engine_cases",
         metadata={"description": "Stored fact-check analysis cases for Expert Chat"}
@@ -47,6 +62,57 @@ def init_collection():
     
     print(f" ChromaDB initialized: {collection.count()} facts, {page_collection.count()} pages stored")
     return collection
+
+
+def compute_embedding(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> List[float]:
+    """
+    Compute embedding for a single string using Gemini.
+    
+    Args:
+        text: Text to embed
+        task_type: "RETRIEVAL_DOCUMENT" for storage, "QUESTION_ANSWERING" for query
+        
+    Returns:
+        List of floats (embedding vector)
+    """
+    try:
+        result = genai.embed_content(
+            model=EMBEDDING_MODEL,
+            content=text,
+            task_type=task_type
+        )
+        return result["embedding"]
+    except Exception as e:
+        print(f"Error computing embedding: {e}")
+        return []
+
+
+def compute_batch_embeddings(texts: List[str], task_type: str = "RETRIEVAL_DOCUMENT") -> List[List[float]]:
+    """
+    Compute embeddings for a batch of strings.
+    Chunks requests to respect API limits if necessary (though genai handles some batching).
+    """
+    if not texts:
+        return []
+        
+    try:
+        # Simple batch call
+        # Note: Gemini API has limits on batch size, but for < 100 items it's usually fine
+        # If texts list is huge, we might need to chunk it further.
+        result = genai.embed_content(
+            model=EMBEDDING_MODEL,
+            content=texts,
+            task_type=task_type
+        )
+        return result["embedding"]
+    except Exception as e:
+        print(f"Batch embedding error: {e}. Falling back to single processing.")
+        # Fallback to single processing if batch fails
+        embeddings = []
+        for text in texts:
+            embeddings.append(compute_embedding(text, task_type))
+            time.sleep(0.1)  # Brief pause to avoid rate limits
+        return embeddings
 
 
 def save_case(verdict_data: Dict, case_id: Optional[str] = None) -> str:
@@ -88,6 +154,7 @@ def save_case(verdict_data: Dict, case_id: Optional[str] = None) -> str:
                 trust_score = evidence.get("trust_score", "Low")
                 supporting_urls = evidence.get("supporting_urls", [])
                 
+                # Format: Claim + Fact for better context in embedding
                 doc_text = f"Claim: {claim_text}\nFact: {fact_text}"
                 
                 documents.append(doc_text)
@@ -107,8 +174,13 @@ def save_case(verdict_data: Dict, case_id: Optional[str] = None) -> str:
                 ids.append(f"{case_id}_claim{claim_idx}_{side}_{ev_idx}")
     
     if documents:
+        # Generate embeddings with "RETRIEVAL_DOCUMENT" task type
+        print(f"Generating embeddings for {len(documents)} logic facts...")
+        embeddings = compute_batch_embeddings(documents, task_type="RETRIEVAL_DOCUMENT")
+        
         collection.add(
             documents=documents,
+            embeddings=embeddings,
             metadatas=metadatas,
             ids=ids
         )
@@ -191,8 +263,15 @@ def retrieve_context(case_id: str, question: str, top_k: int = 5) -> Dict:
     if collection is None:
         raise RuntimeError("ChromaDB not initialized. Call init_collection() first.")
     
+    # Compute embedding for the question with "QUESTION_ANSWERING" task type
+    query_embedding = compute_embedding(question, task_type="QUESTION_ANSWERING")
+    
+    if not query_embedding:
+        print("Error: Could not compute embedding for query")
+        return {"facts": [], "trust_breakdown": {}}
+    
     results = collection.query(
-        query_texts=[question],
+        query_embeddings=[query_embedding],
         n_results=top_k * 3,
         where={"case_id": case_id}
     )
@@ -293,8 +372,13 @@ def save_page_content(url: str, content: str, case_id: str, title: str = "") -> 
         # Check uniqueness just in case (optional, but good for safety)
         # For now, relying on unique IDs should be enough or let Chroma handle duplicates (upsert behavior)
         
+        # Generate embeddings for chunks
+        print(f"Generating embeddings for {len(documents)} page chunks...")
+        embeddings = compute_batch_embeddings(documents, task_type="RETRIEVAL_DOCUMENT")
+        
         page_collection.add(
             documents=documents,
+            embeddings=embeddings,
             metadatas=metadatas,
             ids=ids
         )
@@ -322,8 +406,14 @@ def get_page_content(case_id: str, question: str, top_k: int = 3) -> List[Dict]:
         return []
     
     try:
+        # Compute embedding for the question
+        query_embedding = compute_embedding(question, task_type="QUESTION_ANSWERING")
+        
+        if not query_embedding:
+            return []
+            
         results = page_collection.query(
-            query_texts=[question],
+            query_embeddings=[query_embedding],
             n_results=top_k,
             where={"case_id": case_id}
         )
