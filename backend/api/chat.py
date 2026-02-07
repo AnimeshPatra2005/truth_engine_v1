@@ -210,13 +210,14 @@ def _generate_answer(question: str, context: str, sources_map: Dict) -> dict:
 USER QUESTION: {question}
 
 HOW TO RESPOND:
-1. Start with a DIRECT ANSWER to their question - don't dodge or be vague
-2. INTERPRET the evidence - explain what it means, not just what it says
-3. Acknowledge nuance and complexity where it exists (e.g., "This is complicated because...")
-4. If the evidence is mixed or unclear, say so honestly
-5. Use [1], [2] style citations when referencing specific sources
-6. Be conversational and helpful, like an expert colleague explaining something
-7. If you think the user is asking something the evidence doesn't cover well, suggest what else they might want to look into
+1.Keep your answers short and to the point (10 sentences maximum) and do not use characters like # or *
+2. Start with a DIRECT ANSWER to their question - don't dodge or be vague
+3. INTERPRET the evidence - explain what it means, not just what it says
+4. Acknowledge nuance and complexity where it exists (e.g., "This is complicated because...")
+5. If the evidence is mixed or unclear, say so honestly
+6. Use [1], [2] style citations when referencing specific sources
+7. Be conversational and helpful, like an expert colleague explaining something
+8. If you think the user is asking something the evidence doesn't cover well, suggest what else they might want to look into
 
 AVOID:
 - Robotic, mechanical responses that just list facts
