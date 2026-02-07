@@ -6,6 +6,8 @@ function ExpertChat({ isOpen, onClose, caseId, analysisData }) {
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
+    const [sidebarWidth, setSidebarWidth] = useState(450);
+    const [isResizing, setIsResizing] = useState(false);
     const messagesEndRef = useRef(null);
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -72,11 +74,53 @@ function ExpertChat({ isOpen, onClose, caseId, analysisData }) {
         }
     };
 
+    const handleMouseDown = (e) => {
+        setIsResizing(true);
+        e.preventDefault();
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!isResizing) return;
+
+            const newWidth = window.innerWidth - e.clientX;
+            // Constrain width between 350px and 80% of screen width
+            const minWidth = 350;
+            const maxWidth = window.innerWidth * 0.8;
+
+            if (newWidth >= minWidth && newWidth <= maxWidth) {
+                setSidebarWidth(newWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+        };
+
+        if (isResizing) {
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
+
     if (!isOpen) return null;
 
     return (
         <div className="expert-chat-overlay" onClick={onClose}>
-            <div className="expert-chat-sidebar" onClick={(e) => e.stopPropagation()}>
+            <div
+                className="expert-chat-sidebar"
+                style={{ width: `${sidebarWidth}px` }}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div
+                    className="resize-handle"
+                    onMouseDown={handleMouseDown}
+                />
                 <div className="expert-chat-header">
                     <div className="expert-chat-title">
                         <FaRobot className="expert-icon" />
