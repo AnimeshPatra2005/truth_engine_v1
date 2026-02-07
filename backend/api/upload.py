@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Form
 from pydantic import BaseModel
 from services.media_engine import process_video
 from services.llm_engine import analyze_text
@@ -23,7 +23,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 class TextAnalysisRequest(BaseModel):
     text: str
 
-def run_analysis_background(job_id: str, transcript: str = None, file_path: str = None):
+def run_analysis_background(job_id: str, transcript: str = None, file_path: str = None, enable_visual_analysis: bool = False):
     """Background task handler for analysis workflow"""
     try:
         visual_analysis = None
@@ -33,8 +33,8 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
             job_results[job_id]["logs"].append("Starting Gemini video processing...")
             start_time = time.time()
             
-            # Use new Gemini-powered media engine
-            media_result = process_video(file_path)
+            # Use new Gemini-powered media engine with visual analysis flag
+            media_result = process_video(file_path, enable_visual_analysis=enable_visual_analysis)
             
             if media_result.get("error"):
                 raise Exception(media_result["transcript"])
@@ -70,9 +70,11 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
         job_results[job_id]["status"] = "complete"
         job_results[job_id]["result"] = {
             "verdict": result,
-            "case_id": case_id,  # Add case_id at top level for frontend
-            "visual_analysis": visual_analysis  # NEW: Include visual correlation data
+            "case_id": case_id,
+            "visual_analysis": visual_analysis
         }
+        print(f"DEBUG: Visual Analysis = {visual_analysis}")
+        print(f"DEBUG: Result keys = {job_results[job_id]['result'].keys()}")
         job_results[job_id]["progress"] = "Analysis complete"
         job_results[job_id]["logs"].append("Analysis finished successfully")
 
@@ -85,10 +87,24 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
         job_results[job_id]["error"] = str(e)
         job_results[job_id]["progress"] = "Failed"
         job_results[job_id]["logs"].append(f"Error: {str(e)}")
+        
+        # Include any partial results we managed to get (like visual analysis)
+        if visual_analysis:
+            job_results[job_id]["result"] = {
+                "visual_analysis": visual_analysis,
+                "partial": True
+            }
 
 
 @router.post("/upload-video")
-async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_video(
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(...),
+    enable_visual_analysis: str = Form("false")
+):
+    # Parse the visual analysis flag from form data
+    do_visual_analysis = enable_visual_analysis.lower() == "true"
+    
     # Validate file type
     allowed_extensions = {'.mp4', '.mp3', '.wav', '.m4a', '.webm', '.ogg', '.flac', '.avi', '.mov', '.mkv'}
     file_extension = os.path.splitext(file.filename)[1].lower()
@@ -124,15 +140,21 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
     job_results[job_id] = {
         "status": "processing",
         "progress": "Queued for processing...",
-        "logs": ["File upload received"],
+        "logs": [f"File upload received (Visual Analysis: {'ON' if do_visual_analysis else 'OFF'})"],
         "filename": file.filename,
         "transcript": None,
         "result": None,
         "error": None
     }
     
-    # Start background task - MUST pass transcript=None explicitly
-    background_tasks.add_task(run_analysis_background, job_id, transcript=None, file_path=file_path)
+    # Start background task with visual analysis flag
+    background_tasks.add_task(
+        run_analysis_background, 
+        job_id, 
+        transcript=None, 
+        file_path=file_path,
+        enable_visual_analysis=do_visual_analysis
+    )
 
     return {
         "job_id": job_id,
