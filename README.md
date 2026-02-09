@@ -18,7 +18,7 @@ Truth Engine (SATYA) is an advanced AI-powered video analysis and fact-checking 
 
 ### Backend
 - **Framework**: FastAPI (Python)
-- **AI & LLM**: Google Gemini (1.5/2.0/3.0), LangChain
+- **AI & LLM**: Google Gemini-3-flash-preview, LangChain
 - **Database**: ChromaDB (Vector Store)
 - **Search**: Tavily Search API, Google Search Grounding
 - **Video Processing**: yt-dlp
