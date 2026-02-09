@@ -226,6 +226,7 @@ function TryPage() {
             setProgressMessage("Queued for analysis...");
             const title = text.substring(0, 30) + "...";
             setProcessingJob({ id: job_id, title: title, status: 'processing' });
+            pollJobStatus(job_id, title);
         } catch (err) {
             console.error("Analysis error:", err);
             setLoading(false);
