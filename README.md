@@ -14,6 +14,9 @@ Truth Engine (SATYA) is an advanced AI-powered video analysis and fact-checking 
 - **Expert Chatbot**: Interactive chatbot for querying analysis results and asking follow-up questions.
 - **Task-Specific Embeddings**: Uses specialized embeddings for accurate information retrieval.
 
+## Demo Video (All features showcased):
+[![Watch the Demo Video](https://img.youtube.com/vi/-RU4aYndaQg/maxresdefault.jpg)](https://www.youtube.com/watch?v=-RU4aYndaQg)
+
 ## Technology Stack
 
 ### Backend
