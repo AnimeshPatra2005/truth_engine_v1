@@ -29,8 +29,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 8. Copy the entire project
 COPY . .
 
-# 9. Create uploads folder
-RUN mkdir -p backend/uploads
+# 9. Create uploads and chroma_db directories, and set full write permissions for Hugging Face's non-root user (User 1000)
+RUN mkdir -p backend/uploads chroma_db && chmod -R 777 /app
 
 # 10. Run the App
 CMD ["python", "backend/main.py"]
+
