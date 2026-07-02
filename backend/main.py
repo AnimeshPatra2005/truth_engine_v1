@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.upload import router as upload_router
 from api.chat import router as chat_router
-from services.run_pipeline import run_full_pipeline
 from db.case_store import init_collection
 import uvicorn
+import os
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -18,17 +18,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# --- CORS Middleware (Fixed syntax) ---
+# --- CORS Middleware (Configured for universal frontend access) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost",
-        "https://truth-engine-v1.vercel.app",
-        "https://truth-engine-v1-animeshpatra2005s-projects.vercel.app",  # Full Vercel domain
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -44,4 +37,6 @@ def health_check():
 
 if __name__ == "__main__":
     print("\nTruth Engine - Starting Web Server...")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Bind to PORT environment variable (assigned by Hugging Face/Docker) or fallback to 8000
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
