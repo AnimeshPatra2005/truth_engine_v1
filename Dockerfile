@@ -22,6 +22,11 @@ RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://
 # 6. Install Whisper (It will use the torch we just installed)
 RUN pip install --no-cache-dir openai-whisper
 
+# 6b. Install deepfake detection stack AFTER torch is already pinned CPU-only.
+#     deepguard pulls in ultralytics (YOLO face detector) and transformers.
+#     Installing here prevents pip from re-resolving torch to a GPU build.
+RUN pip install --no-cache-dir timm transformers deepguard albumentations
+
 # 7. Copy and install the rest of the requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

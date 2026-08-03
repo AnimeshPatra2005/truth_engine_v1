@@ -116,9 +116,16 @@ function EvidenceSection({ prosecutorEvidence, defenderEvidence }) {
     );
 }
 
-function ResultsDisplay({ verdict, visualAnalysis }) {
+function ResultsDisplay({ verdict, visualAnalysis, deepfakeAnalysis }) {
     const [showClaimAnalysis, setShowClaimAnalysis] = useState(false);
     const [showVisualAnalysis, setShowVisualAnalysis] = useState(false);
+
+    // Format seconds → M:SS
+    const formatTime = (seconds) => {
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
 
     // Function to get verdict color and icon
     const getVerdictStyle = (status) => {
@@ -152,6 +159,8 @@ function ResultsDisplay({ verdict, visualAnalysis }) {
 
     return (
         <div className="chatbot-results">
+
+
             {/* Overall Verdict Message */}
             <div className="result-message">
                 <div className="verdict-card" style={{ borderLeftColor: overallStyle.color }}>
@@ -237,16 +246,66 @@ function ResultsDisplay({ verdict, visualAnalysis }) {
             )}
 
             {/* Visual Analysis (Expandable) */}
-            {showVisualAnalysis && visualAnalysis && (
+            {showVisualAnalysis && (visualAnalysis || deepfakeAnalysis) && (
                 <div style={{
                     background: 'rgba(30,30,40,0.9)',
                     padding: '1rem',
                     borderRadius: '8px',
                     marginTop: '1rem'
                 }}>
-                    <p style={{ color: '#a0a0a0', marginBottom: '1rem' }}>
-                        {visualAnalysis.summary}
-                    </p>
+                    
+                    {/* Deepfake Detection Banner */}
+                    {deepfakeAnalysis && !deepfakeAnalysis.error && (
+                        <div className={`deepfake-banner ${deepfakeAnalysis.is_fake ? 'deepfake-detected' : 'deepfake-clean'}`} style={{ marginBottom: '1.5rem' }}>
+                            <div className="deepfake-banner-header">
+                                <div className="deepfake-status-indicator" />
+                                <span className="deepfake-banner-label">
+                                    {deepfakeAnalysis.is_fake
+                                        ? 'VIDEO MANIPULATION DETECTED'
+                                        : 'NO VIDEO MANIPULATION DETECTED'}
+                                </span>
+                                <span className="deepfake-confidence-pill">
+                                    Confidence: {(deepfakeAnalysis.overall_score * 100).toFixed(1)}%
+                                </span>
+                            </div>
+
+                            {deepfakeAnalysis.is_fake && deepfakeAnalysis.segments?.length > 0 && (
+                                <div className="deepfake-segments">
+                                    <div className="deepfake-segments-label">Detected Segments</div>
+                                    <div className="deepfake-segments-list">
+                                        {deepfakeAnalysis.segments.map((seg, i) => (
+                                            <div key={i} className="deepfake-segment-row">
+                                                <span className="deepfake-segment-range">
+                                                    {formatTime(seg.start)} &ndash; {formatTime(seg.end)}
+                                                </span>
+                                                <div className="deepfake-segment-bar-wrap">
+                                                    <div
+                                                        className="deepfake-segment-bar-fill"
+                                                        style={{ width: `${(seg.confidence * 100).toFixed(1)}%` }}
+                                                    />
+                                                </div>
+                                                <span className="deepfake-segment-score">
+                                                    {(seg.confidence * 100).toFixed(1)}%
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {deepfakeAnalysis.is_fake && deepfakeAnalysis.segments?.length === 0 && (
+                                <p className="deepfake-no-segments">
+                                    Manipulation signal detected but no isolated segment could be localised.
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {visualAnalysis && (
+                        <>
+                            <p style={{ color: '#a0a0a0', marginBottom: '1rem' }}>
+                                {visualAnalysis.summary}
+                            </p>
 
                     {visualAnalysis.visual_elements?.map((visual, index) => (
                         <div key={index} style={{
@@ -273,6 +332,8 @@ function ResultsDisplay({ verdict, visualAnalysis }) {
                             )}
                         </div>
                     ))}
+                        </>
+                    )}
                 </div>
             )}
         </div>

@@ -120,6 +120,45 @@
     position: relative;
 }
 
+/* ============================================ */
+/* MODE TOGGLE BAR                              */
+/* ============================================ */
+.mode-toggle-bar {
+    display: flex;
+    gap: 4px;
+    padding: 10px 2rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mode-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.mode-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.mode-toggle-btn.active {
+    background: rgba(102, 126, 234, 0.15);
+    border-color: rgba(102, 126, 234, 0.3);
+    color: var(--accent-blue);
+    font-weight: 600;
+}
+
+
 .chat-scroll-area {
     flex: 1;
     overflow-y: auto;

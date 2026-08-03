@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import ThreatTicker from './ThreatTicker';
 import './LandingPage.css';
 
 function LandingPage() {
@@ -216,7 +217,7 @@ function LandingPage() {
             <div className="split-background"></div>
 
             {/* Particle Canvas */}
-            <canvas ref={canvasRef} className="particle-canvas"></canvas>
+            {/*<canvas ref={canvasRef} className="particle-canvas"></canvas> */}
 
             {/* ============================================ */}
             {/* NAVIGATION BAR - Integrated into page */}
@@ -270,6 +271,11 @@ function LandingPage() {
                     </div>
                 </div>
             </section>
+
+            {/* ============================================ */}
+            {/* THREAT TICKER — Live scam intelligence feed */}
+            {/* ============================================ */}
+            <ThreatTicker />
 
             {/* ============================================ */}
             {/* FEATURES SECTION */}

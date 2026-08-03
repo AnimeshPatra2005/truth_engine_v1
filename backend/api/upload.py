@@ -41,6 +41,7 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
             
             transcript = media_result["transcript"]
             visual_analysis = media_result.get("visual_analysis")
+            deepfake_analysis = media_result.get("deepfake_analysis")
             
             elapsed = time.time() - start_time
             job_results[job_id]["logs"].append(f"Video processing complete in {elapsed:.1f}s")
@@ -71,7 +72,8 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
         job_results[job_id]["result"] = {
             "verdict": result,
             "case_id": case_id,
-            "visual_analysis": visual_analysis
+            "visual_analysis": visual_analysis,
+            "deepfake_analysis": deepfake_analysis
         }
         print(f"DEBUG: Visual Analysis = {visual_analysis}")
         print(f"DEBUG: Result keys = {job_results[job_id]['result'].keys()}")

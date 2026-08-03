@@ -12,6 +12,7 @@ import time
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+from services.deepfake_engine import run_deepfake_detection
 
 load_dotenv()
 
@@ -233,6 +234,13 @@ def process_video(file_path: str, enable_visual_analysis: bool = True) -> dict:
         if file_size == 0:
             return {"transcript": "Error: Uploaded file is empty.", "error": True}
 
+        # Step 0: Deepfake detection — runs on the local file before anything
+        # else so it does not depend on Gemini and cannot block transcription.
+        deepfake_analysis = None
+        video_extensions = {'.mp4', '.webm', '.avi', '.mov', '.mkv'}
+        if os.path.splitext(file_path)[1].lower() in video_extensions:
+            deepfake_analysis = run_deepfake_detection(file_path)
+
         # Step 1: Upload and wait for processing (ONCE)
         uploaded_file = upload_to_gemini(file_path)
         processed_file = wait_for_processing(uploaded_file)
@@ -261,6 +269,7 @@ def process_video(file_path: str, enable_visual_analysis: bool = True) -> dict:
         return {
             "transcript": transcript,
             "visual_analysis": visual_analysis,
+            "deepfake_analysis": deepfake_analysis,
             "error": False
         }
         

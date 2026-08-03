@@ -1,0 +1,112 @@
+[
+  {
+    "id": "sebi-ban-wealthmax-2026",
+    "title": "SEBI Order Against Wealthmax Solutions for Fake Investment Advice",
+    "category": "social_engineering",
+    "description": "Unregistered advisors lure retail investors with promises of guaranteed returns and exclusive stock tips through unregistered firms.",
+    "source_label": "SEBI",
+    "source_url": "https://gocredit.money/news/sebi-bans-fake-advisor-are-you-safe-20260409",
+    "date": "2026-04",
+    "severity": "medium"
+  },
+  {
+    "id": "sebi-boss-scam-caution",
+    "title": "SEBI Warning to Entities Regarding AI-Powered Boss Scam",
+    "category": "impersonation",
+    "description": "Fraudsters impersonate CEOs and senior executives on messaging platforms to trick employees into making urgent fund transfers.",
+    "source_label": "SEBI",
+    "source_url": "https://www.sebi.gov.in/media-and-notifications/press-releases/jul-2026/caution-to-regulated-entities-and-listed-companies-boss-scam_102919.html",
+    "date": "2026-07",
+    "severity": "high"
+  },
+  {
+    "id": "telegram-crypto-exit-scam",
+    "title": "RBI Advisory on Unauthorised Telegram Crypto Trading Platforms",
+    "category": "fake_platform",
+    "description": "Fraudsters use Telegram signal channels and fake exchanges to orchestrate crypto exit scams outside Indian jurisdiction.",
+    "source_label": "RBI",
+    "source_url": "https://scantotal.net/blog/telegram-crypto-scams-india",
+    "date": "2026",
+    "severity": "high"
+  },
+  {
+    "id": "sebi-deepfake-caution-2025",
+    "title": "SEBI Caution Against AI Deepfake Guaranteed Return Schemes",
+    "category": "deepfake",
+    "description": "AI-generated videos of market experts and the Prime Minister endorse fraudulent guaranteed-return schemes on social media platforms.",
+    "source_label": "SEBI",
+    "source_url": "https://www.nyvo.money/resources/newsletter/how-to-spot-investment-scam",
+    "date": "2025-05",
+    "severity": "high"
+  },
+  {
+    "id": "rbi-fictitious-lottery-alert",
+    "title": "RBI Alert on Fictitious Lottery Offers and Cheap Funds",
+    "category": "impersonation",
+    "description": "Fraudsters send fictitious offers using fake logos and names like Reserve Bank to trick the public into paying fees.",
+    "source_label": "RBI",
+    "source_url": "https://www.rbi.org.in/commonman/English/Scripts/PressReleases.aspx?Id=2440",
+    "date": "2026",
+    "severity": "medium"
+  },
+  {
+    "id": "bse-ceo-deepfake-video",
+    "title": "BSE Cautions Against Deepfake Video of CEO Recommending Stocks",
+    "category": "deepfake",
+    "description": "A fraudulent AI-generated video featuring the BSE CEO provides fake stock recommendations to viewers on social media.",
+    "source_label": "BSE",
+    "source_url": "https://www.thehindu.com/business/bse-cautions-investors-against-deepfake-video-of-its-ceo-recommending-stocks/article70501075.ece",
+    "date": "2026-01",
+    "severity": "high"
+  },
+  {
+    "id": "sebi-pump-dump-whatsapp",
+    "title": "SEBI Crackdown on WhatsApp Pump and Dump Investment Scams",
+    "category": "pump_and_dump",
+    "description": "Scammers use social media and messaging platforms to hype low-quality stocks before dumping shares for profit.",
+    "source_label": "SEBI",
+    "source_url": "https://www.indiratrade.com/blog/sebi-cracks-down-on-pumpanddump-scams-protecting-investors-in-2025/9564",
+    "date": "2025",
+    "severity": "medium"
+  },
+  {
+    "id": "whatsapp-fake-fund-house",
+    "title": "Beware of Fake Fund House Groups on WhatsApp",
+    "category": "social_engineering",
+    "description": "Scammers create fake WhatsApp groups pretending to be well-known fund houses to offer phony stock tips and courses.",
+    "source_label": "Times of India",
+    "source_url": "https://timesofindia.indiatimes.com/business/financial-literacy/investing/how-whatsapp-investing-scams-operate-beware-of-these-red-flags-to-avoid-losing-money/articleshow/109168659.cms",
+    "date": "2026",
+    "severity": "medium"
+  },
+  {
+    "id": "binary-trading-apk-scam",
+    "title": "Binary Trading Scam via Unregulated Apps and APK Files",
+    "category": "fake_platform",
+    "description": "Unregulated platforms lure investors with guaranteed returns but require downloading risky APK files from unknown sources.",
+    "source_label": "RTI Wiki",
+    "source_url": "https://righttoinformation.wiki/binary-trading-scam-india",
+    "date": "2026",
+    "severity": "high"
+  },
+  {
+    "id": "nse-fake-stt-notice",
+    "title": "NSE Warning on Forged SEBI Letterheads for STT Payment",
+    "category": "regulatory_fraud",
+    "description": "Fraudsters use forged SEBI letterheads and logos to demand payment of Securities Transaction Tax for releasing funds.",
+    "source_label": "NSE",
+    "source_url": "https://www.angelone.in/news/personal-finance/nse-issues-public-warning-on-fake-sebi-stt-notices-urges-investors-to-stay-alert",
+    "date": "2026-02",
+    "severity": "high"
+  },
+  {
+    "id": "sbi-account-lock-phishing",
+    "title": "SBI Phishing Alert for Fake Account Lock Text Messages",
+    "category": "phishing",
+    "description": "Phishing messages claim bank accounts are locked and request users to click malicious links to verify credentials.",
+    "source_label": "SBI",
+    "source_url": "https://sbi.bank.in/web/yono/phishing-attacks-how-to-spot-scams-and-protect-yourself",
+    "date": "2026",
+    "severity": "high"
+  }
+]

@@ -1,0 +1,372 @@
+[
+  {
+    "id": "sebi-never-collects-stt",
+    "rule": "SEBI never directly collects Securities Transaction Tax (STT) from investors or asks for payment to release blocked funds",
+    "category": "payment_demand",
+    "entity": "SEBI",
+    "keywords": ["STT", "securities transaction tax", "release funds", "blocked funds", "pay to release", "SEBI payment"],
+    "proof_links": [
+      {
+        "label": "NSE Warning on Forged SEBI STT Notices (Feb 2026)",
+        "url": "https://www.angelone.in/news/personal-finance/nse-issues-public-warning-on-fake-sebi-stt-notices-urges-investors-to-stay-alert"
+      },
+      {
+        "label": "SEBI Investor Awareness on Tax Deduction",
+        "url": "https://investor.sebi.gov.in/"
+      }
+    ],
+    "what_to_tell_user": "STT is automatically deducted by your broker at the exchange level during transactions. SEBI has no mechanism to collect STT directly from investors, nor does it ever send payment notices for STT. Any such demand is a confirmed fraud.",
+    "actionable_steps": [
+      "Do NOT transfer any money",
+      "Take screenshots of the message/email/letter as evidence",
+      "Report to SEBI's SCORES portal (scores.sebi.gov.in) or call SEBI helpline 1800-266-7575",
+      "File a cybercrime complaint at cybercrime.gov.in",
+      "Inform your broker about the fraudulent communication"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "sebi-never-contacts-via-social",
+    "rule": "SEBI never contacts investors via WhatsApp, Telegram, SMS, or social media to promote investment schemes or offer stock tips",
+    "category": "communication_channel",
+    "entity": "SEBI",
+    "keywords": ["WhatsApp group", "Telegram channel", "signal group", "SEBI tips", "SEBI WhatsApp", "SEBI Telegram", "official group", "SEBI SMS"],
+    "proof_links": [
+      {
+        "label": "SEBI Caution on Unregistered Investment Advisors",
+        "url": "https://www.sebi.gov.in/legal/circulars/jul-2024/caution-to-investors-regarding-unsolicited-investment-tips_85088.html"
+      },
+      {
+        "label": "SEBI Investor Education - How to Verify Registered Intermediaries",
+        "url": "https://www.sebi.gov.in/intermediaries.html"
+      }
+    ],
+    "what_to_tell_user": "SEBI only communicates through official channels: its website (sebi.gov.in), official email addresses (@sebi.gov.in), and registered post. SEBI will never add you to WhatsApp/Telegram groups or send unsolicited investment tips via messaging apps.",
+    "actionable_steps": [
+      "Exit the group immediately",
+      "Do NOT click any links shared in the group",
+      "Report the group/number to WhatsApp/Telegram",
+      "Verify any claimed SEBI registration at sebi.gov.in/intermediaries.html",
+      "Report to cybercrime.gov.in"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "no-guaranteed-returns",
+    "rule": "No SEBI-registered intermediary, advisor, or mutual fund can legally guarantee fixed returns on investments in the securities market",
+    "category": "guarantee",
+    "entity": "SEBI",
+    "keywords": ["guaranteed returns", "fixed profit", "assured gains", "100% return", "no loss", "guaranteed income", "risk-free investment", "double money"],
+    "proof_links": [
+      {
+        "label": "SEBI Caution Against AI Deepfake Guaranteed Return Schemes (2025)",
+        "url": "https://www.nyvo.money/resources/newsletter/how-to-spot-investment-scam"
+      },
+      {
+        "label": "SEBI Investment Advisor Regulations",
+        "url": "https://www.sebi.gov.in/legal/regulations/jan-2020/securities-and-exchange-board-of-india-investment-advisers-regulations-2013-last-amended-on-january-03-2020-_45790.html"
+      }
+    ],
+    "what_to_tell_user": "Securities markets carry inherent risk. Under SEBI regulations, NO registered intermediary or advisor is permitted to guarantee or promise fixed returns. Any entity promising guaranteed returns is either unregistered (illegal) or lying (fraud). This applies to stocks, mutual funds, derivatives, and all securities.",
+    "actionable_steps": [
+      "Do NOT invest based on return guarantees",
+      "Verify the advisor's SEBI registration number at sebi.gov.in",
+      "Check if the scheme is listed on any recognized exchange (NSE/BSE)",
+      "Report unregistered advisors to SEBI's SCORES portal",
+      "Be especially wary of schemes promising returns above the RBI repo rate"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "sebi-never-demands-fees",
+    "rule": "SEBI never demands processing fees, registration fees, or advance payments from investors to release profits, refunds, or account access",
+    "category": "payment_demand",
+    "entity": "SEBI",
+    "keywords": ["processing fee", "registration fee", "release profit", "advance payment", "unlock account", "pay fee to SEBI", "SEBI charges"],
+    "proof_links": [
+      {
+        "label": "RBI Alert on Fictitious Offers and Fee Demands",
+        "url": "https://www.rbi.org.in/commonman/English/Scripts/PressReleases.aspx?Id=2440"
+      },
+      {
+        "label": "SEBI Investor Helpline and Grievance Redressal",
+        "url": "https://scores.sebi.gov.in/"
+      }
+    ],
+    "what_to_tell_user": "SEBI never asks investors for processing fees, advance tax payments, or any kind of charge to release funds. SEBI's grievance redressal through SCORES is completely free. Any demand for payment in exchange for releasing your money is a classic advance-fee fraud.",
+    "actionable_steps": [
+      "Do NOT pay any fee or charge",
+      "Contact SEBI directly through the official helpline: 1800-266-7575",
+      "Use SEBI SCORES (scores.sebi.gov.in) for legitimate grievance redressal",
+      "File a complaint at cybercrime.gov.in",
+      "Alert your bank if you have already shared account details"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "boss-scam-warning",
+    "rule": "Legitimate senior executives do not bypass standard financial approval processes by requesting urgent fund transfers via WhatsApp, personal email, or text message",
+    "category": "impersonation",
+    "entity": "Corporate",
+    "keywords": ["boss", "CEO", "CFO", "MD", "urgent transfer", "wire money", "senior executive", "don't tell anyone", "confidential transfer", "immediate payment"],
+    "proof_links": [
+      {
+        "label": "SEBI Caution to Regulated Entities - Boss Scam (Jul 2026)",
+        "url": "https://www.sebi.gov.in/media-and-notifications/press-releases/jul-2026/caution-to-regulated-entities-and-listed-companies-boss-scam_102919.html"
+      }
+    ],
+    "what_to_tell_user": "This matches the 'Boss Scam' pattern warned about by SEBI in July 2026. Fraudsters use AI voice cloning, deepfakes, and spoofed messages to impersonate CEOs and senior executives, pressuring employees into making urgent, unauthorized fund transfers. Legitimate executives follow established financial approval processes.",
+    "actionable_steps": [
+      "Do NOT transfer any money based on this message alone",
+      "Verify the request by calling the person directly on their known phone number (not the number in the message)",
+      "Check with your company's finance department through official channels",
+      "Report the incident to your IT security team",
+      "If money was already transferred, immediately contact your bank and file FIR with police"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "rbi-never-lottery-prizes",
+    "rule": "RBI never conducts lotteries, offers prizes, or sends email/SMS notifications about winning money that requires a fee to claim",
+    "category": "impersonation",
+    "entity": "RBI",
+    "keywords": ["RBI lottery", "Reserve Bank prize", "RBI winner", "claim prize RBI", "RBI remittance", "RBI funds transfer"],
+    "proof_links": [
+      {
+        "label": "RBI Alert on Fictitious Lottery Offers Using RBI Name",
+        "url": "https://www.rbi.org.in/commonman/English/Scripts/PressReleases.aspx?Id=2440"
+      }
+    ],
+    "what_to_tell_user": "The Reserve Bank of India does NOT conduct any lottery, offer prizes, or send emails/SMS about unclaimed funds. Any communication claiming you have won a prize from RBI and asking you to pay a fee to claim it is a well-documented scam. RBI has issued multiple public warnings about this.",
+    "actionable_steps": [
+      "Do NOT respond to the communication",
+      "Do NOT pay any fee or share bank account details",
+      "Report the fraud at cybercrime.gov.in",
+      "Forward the message/email to RBI's official complaint email",
+      "Warn family and friends about this common scam pattern"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "fake-sebi-letterhead",
+    "rule": "SEBI does not send investment advice, account blocking notices, or penalty demands via email on letterhead. Official SEBI orders are published on sebi.gov.in",
+    "category": "regulatory_fraud",
+    "entity": "SEBI",
+    "keywords": ["SEBI letterhead", "SEBI order", "SEBI notice", "SEBI seal", "official SEBI letter", "SEBI penalty", "account blocked by SEBI"],
+    "proof_links": [
+      {
+        "label": "NSE Warning on Forged SEBI Letterheads (Feb 2026)",
+        "url": "https://www.angelone.in/news/personal-finance/nse-issues-public-warning-on-fake-sebi-stt-notices-urges-investors-to-stay-alert"
+      },
+      {
+        "label": "SEBI Official Orders and Circulars Repository",
+        "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=1&ssid=1"
+      }
+    ],
+    "what_to_tell_user": "SEBI publishes all official orders, circulars, and penalty notices on its website (sebi.gov.in). Scammers frequently forge SEBI letterheads, logos, and seals to create fake documents. Any official SEBI action can be independently verified on the SEBI website.",
+    "actionable_steps": [
+      "Cross-verify the order/circular number on sebi.gov.in",
+      "Check if the communication came from an @sebi.gov.in email address",
+      "Call SEBI helpline 1800-266-7575 to verify",
+      "Do NOT make any payment based on the letter",
+      "Report the forged document at cybercrime.gov.in"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "pump-and-dump-tips",
+    "rule": "Unsolicited stock tips promising extraordinary short-term gains through WhatsApp groups, Telegram channels, or social media are likely pump-and-dump schemes",
+    "category": "pump_and_dump",
+    "entity": "SEBI",
+    "keywords": ["stock tip", "multibagger", "insider info", "target price", "buy now", "rocket stock", "100% gain", "penny stock", "small cap tip"],
+    "proof_links": [
+      {
+        "label": "SEBI Crackdown on WhatsApp Pump-and-Dump Scams",
+        "url": "https://www.indiratrade.com/blog/sebi-cracks-down-on-pumpanddump-scams-protecting-investors-in-2025/9564"
+      }
+    ],
+    "what_to_tell_user": "SEBI has actively cracked down on pump-and-dump operations where scammers promote low-quality or penny stocks through social media and messaging apps to inflate prices before selling their holdings for profit. Genuine investment advice comes from SEBI-registered advisors, not anonymous tip channels.",
+    "actionable_steps": [
+      "Do NOT buy stocks based on unsolicited tips",
+      "Check if the tipster is SEBI-registered at sebi.gov.in/intermediaries.html",
+      "Report the channel/group to SEBI SCORES",
+      "If you already bought, consult a registered financial advisor before making further decisions",
+      "Exit and report the WhatsApp/Telegram group"
+    ],
+    "severity": "medium"
+  },
+  {
+    "id": "fake-trading-platform",
+    "rule": "Legitimate stock brokers and trading platforms must be registered with SEBI and listed on NSE/BSE. Any platform asking you to download APK files or invest through unregistered apps is fraudulent",
+    "category": "fake_platform",
+    "entity": "SEBI",
+    "keywords": ["download app", "APK file", "trading platform", "binary trading", "forex trading India", "unregistered broker", "new exchange"],
+    "proof_links": [
+      {
+        "label": "SEBI List of Registered Stock Brokers",
+        "url": "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRecognisedFpi=yes&intmId=10"
+      },
+      {
+        "label": "Binary Trading Scam Warning (RTI Wiki)",
+        "url": "https://righttoinformation.wiki/binary-trading-scam-india"
+      }
+    ],
+    "what_to_tell_user": "All legitimate stock brokers in India must be registered with SEBI and operate through recognized exchanges (NSE, BSE). Any platform asking you to download APK files from unknown sources, or claiming to be a 'new exchange', is almost certainly fraudulent. Binary options trading is not permitted in India.",
+    "actionable_steps": [
+      "Verify the broker's SEBI registration number at sebi.gov.in",
+      "Never download trading APK files from WhatsApp or unknown links",
+      "Only use apps available on official Google Play Store or Apple App Store",
+      "Check if the platform operates through NSE or BSE",
+      "Report unregistered platforms to SEBI and cybercrime.gov.in"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "sebi-never-asks-credentials",
+    "rule": "SEBI, stock exchanges, and depository participants never ask for your trading password, OTP, Demat PIN, or bank login credentials via phone, email, or message",
+    "category": "credential_theft",
+    "entity": "SEBI",
+    "keywords": ["OTP", "password", "PIN", "login credentials", "verify account", "KYC update", "Demat PIN", "trading password", "bank password"],
+    "proof_links": [
+      {
+        "label": "SBI Phishing Alert - Fake Account Lock Messages",
+        "url": "https://sbi.bank.in/web/yono/phishing-attacks-how-to-spot-scams-and-protect-yourself"
+      },
+      {
+        "label": "CDSL Investor Awareness on Credential Safety",
+        "url": "https://www.cdslindia.com/investors/investor-awareness.html"
+      }
+    ],
+    "what_to_tell_user": "No legitimate financial institution — SEBI, banks, exchanges, or depository participants — will ever ask you to share your password, OTP, PIN, or login credentials through any channel. These are phishing attempts designed to steal your account access.",
+    "actionable_steps": [
+      "NEVER share OTP, password, or PIN with anyone",
+      "Do NOT click links in messages asking to 'verify' or 'update' your account",
+      "Contact your broker/bank directly through their official app or website",
+      "Change your passwords immediately if you have already shared credentials",
+      "Enable two-factor authentication on all financial accounts"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "fake-mutual-fund-whatsapp",
+    "rule": "Legitimate mutual fund houses (AMCs) do not recruit investors through WhatsApp groups, offer exclusive courses, or promise insider portfolio strategies through messaging platforms",
+    "category": "social_engineering",
+    "entity": "AMFI",
+    "keywords": ["mutual fund group", "AMC WhatsApp", "fund house group", "exclusive course", "portfolio strategy", "mutual fund tips"],
+    "proof_links": [
+      {
+        "label": "Times of India - WhatsApp Investing Scam Warning",
+        "url": "https://timesofindia.indiatimes.com/business/financial-literacy/investing/how-whatsapp-investing-scams-operate-beware-of-these-red-flags-to-avoid-losing-money/articleshow/109168659.cms"
+      },
+      {
+        "label": "AMFI Registered Mutual Funds List",
+        "url": "https://www.amfiindia.com/research-information/amfi-mutual-fund-performance"
+      }
+    ],
+    "what_to_tell_user": "Legitimate AMCs (Asset Management Companies) distribute through AMFI-registered distributors and their official websites/apps. They do not create WhatsApp groups to recruit investors or offer paid 'exclusive' courses through messaging platforms. Always invest through official AMC websites or registered distributors.",
+    "actionable_steps": [
+      "Verify the fund house at amfiindia.com",
+      "Exit the fake WhatsApp/Telegram group immediately",
+      "Only invest through official AMC apps or SEBI-registered distributors",
+      "Report the group to WhatsApp and SEBI SCORES",
+      "Check distributor registration at amfiindia.com"
+    ],
+    "severity": "medium"
+  },
+  {
+    "id": "crypto-telegram-scam",
+    "rule": "Cryptocurrency trading through Telegram signal channels and unregistered platforms is unregulated in India. RBI and SEBI do not endorse or regulate crypto investment schemes",
+    "category": "fake_platform",
+    "entity": "RBI",
+    "keywords": ["crypto", "bitcoin", "Telegram signals", "crypto exchange", "cryptocurrency", "blockchain investment", "crypto guaranteed"],
+    "proof_links": [
+      {
+        "label": "RBI Advisory on Unauthorised Telegram Crypto Trading",
+        "url": "https://scantotal.net/blog/telegram-crypto-scams-india"
+      }
+    ],
+    "what_to_tell_user": "Cryptocurrency investments are not regulated by SEBI or protected by any Indian regulatory body. Telegram-based crypto signal channels and unregistered exchanges frequently operate as exit scams — taking investor money and disappearing. RBI has repeatedly warned against such platforms.",
+    "actionable_steps": [
+      "Do NOT invest through unregistered crypto platforms",
+      "Be aware that crypto investments have no regulatory protection in India",
+      "If using crypto, use only well-established exchanges compliant with Indian law",
+      "Report fraudulent crypto schemes at cybercrime.gov.in",
+      "Do NOT send money to individuals or groups promising crypto returns"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "deepfake-celebrity-endorsement",
+    "rule": "AI-generated deepfake videos of the Prime Minister, SEBI chairperson, BSE/NSE CEOs, or market experts endorsing investment schemes are fabricated. No such official endorsements exist",
+    "category": "deepfake",
+    "entity": "SEBI",
+    "keywords": ["deepfake", "PM endorses", "SEBI chairman recommends", "BSE CEO stock", "celebrity investment", "AI video", "famous person recommends"],
+    "proof_links": [
+      {
+        "label": "BSE Cautions Against Deepfake Video of CEO (Jan 2026)",
+        "url": "https://www.thehindu.com/business/bse-cautions-investors-against-deepfake-video-of-its-ceo-recommending-stocks/article70501075.ece"
+      },
+      {
+        "label": "SEBI Caution Against AI Deepfake Schemes (2025)",
+        "url": "https://www.nyvo.money/resources/newsletter/how-to-spot-investment-scam"
+      }
+    ],
+    "what_to_tell_user": "Scammers are using AI-generated deepfake videos to create fake endorsements from public figures like the Prime Minister, SEBI officials, and exchange CEOs. BSE has officially warned against such videos. No legitimate investment scheme requires celebrity endorsement to attract investors.",
+    "actionable_steps": [
+      "Do NOT invest based on celebrity endorsement videos",
+      "Verify any scheme directly on sebi.gov.in or the relevant exchange website",
+      "Report the deepfake video to the platform where it was shared",
+      "Use SATYA's Courtroom engine to verify video authenticity",
+      "Report to cybercrime.gov.in with a link to the video"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "sebi-never-blocks-demat",
+    "rule": "SEBI does not directly freeze or block individual Demat accounts and then demand payment. Demat account freezing follows formal legal procedures through depositories (CDSL/NSDL)",
+    "category": "payment_demand",
+    "entity": "SEBI",
+    "keywords": ["Demat blocked", "account frozen", "SEBI freeze", "unblock Demat", "pay to unfreeze", "Demat suspended"],
+    "proof_links": [
+      {
+        "label": "CDSL - Demat Account Related FAQs",
+        "url": "https://www.cdslindia.com/investors/investor-awareness.html"
+      },
+      {
+        "label": "SEBI Investor Helpline",
+        "url": "https://investor.sebi.gov.in/"
+      }
+    ],
+    "what_to_tell_user": "SEBI does not directly freeze Demat accounts or demand payments to unblock them. Any formal freezing of accounts follows legal procedures through CDSL or NSDL and is communicated through official registered channels. If your account is genuinely frozen, contact your depository participant (DP) directly.",
+    "actionable_steps": [
+      "Do NOT make any payment to 'unfreeze' your account",
+      "Contact your depository participant (DP/broker) directly through their official channels",
+      "Verify your Demat account status on CDSL/NSDL website",
+      "Call SEBI helpline 1800-266-7575 to verify any official action",
+      "Report the scam at cybercrime.gov.in"
+    ],
+    "severity": "high"
+  },
+  {
+    "id": "urgency-pressure-red-flag",
+    "rule": "Any financial communication that creates extreme urgency ('act within 24 hours', 'last chance', 'account will be permanently closed') and pressures immediate action without allowing verification is a major red flag",
+    "category": "behavioral_pattern",
+    "entity": "General",
+    "keywords": ["urgent", "immediately", "last chance", "act now", "24 hours", "deadline today", "account closed", "final notice", "don't delay"],
+    "proof_links": [
+      {
+        "label": "SEBI Boss Scam Advisory - Urgency as a Tactic",
+        "url": "https://www.sebi.gov.in/media-and-notifications/press-releases/jul-2026/caution-to-regulated-entities-and-listed-companies-boss-scam_102919.html"
+      }
+    ],
+    "what_to_tell_user": "Creating artificial urgency is one of the most common psychological manipulation tactics used in financial fraud. Legitimate institutions always allow reasonable time for verification and follow due process. If someone is pressuring you to act immediately and not verify through official channels, it is very likely a scam.",
+    "actionable_steps": [
+      "STOP and do NOT act immediately — urgency is the scammer's weapon",
+      "Take time to independently verify through official channels",
+      "Call the organization directly using the number from their official website (not from the message)",
+      "Discuss with a trusted family member or friend before taking any financial action",
+      "Remember: legitimate institutions never penalize you for taking time to verify"
+    ],
+    "severity": "medium"
+  }
+]

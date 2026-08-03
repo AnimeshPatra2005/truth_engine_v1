@@ -7,9 +7,54 @@ Synthesizes all verified evidence to produce:
 - Overall implication connection
 - Final verdict (True/False/Partially True/Unverified)
 """
+import json
+from pathlib import Path
 from ..schemas import CourtroomState, FinalVerdict, ClaimAnalysis
 from ..utils import safe_invoke_json
 from ..llm_setup import get_llm_for_task
+
+
+# ── Scam Intelligence Feed ─────────────────────────────────────────────────────
+# Loaded ONCE when this module is first imported (Option 1 pattern).
+# Path: backend/scam_context.json (4 levels up from this file's location)
+_SCAM_CONTEXT_PATH = Path(__file__).resolve().parent.parent.parent.parent / "scam_context.json"
+
+def _load_scam_context() -> str:
+    """Read scam_context.json and format it as a compact threat intelligence block.
+    Returns an empty string if the file is missing so the pipeline never breaks."""
+    try:
+        with open(_SCAM_CONTEXT_PATH, "r", encoding="utf-8") as f:
+            items = json.load(f)
+    except FileNotFoundError:
+        print(f"[WARN] scam_context.json not found at {_SCAM_CONTEXT_PATH}. Skipping threat injection.")
+        return ""
+    except json.JSONDecodeError as e:
+        print(f"[WARN] scam_context.json is malformed: {e}. Skipping threat injection.")
+        return ""
+
+    lines = [
+        "THREAT INTELLIGENCE — RECENTLY DOCUMENTED FINANCIAL SCAM PATTERNS:",
+        "The following scam patterns have been officially documented by SEBI, RBI, NSE, and BSE.",
+        "If ANY submitted claim or implication resembles a pattern below, treat it as STRONG",
+        "corroborating evidence of fraudulent intent. Explicitly cite the matching pattern,",
+        "including the source authority and date, in your verdict.",
+        "",
+    ]
+    for item in items:
+        cat   = item.get("category", "").upper().replace("_", " ")
+        title = item.get("title", "")
+        src   = item.get("source_label", "")
+        date  = item.get("date", "")
+        desc  = item.get("description", "")
+        sev   = item.get("severity", "").upper()
+        lines.append(f"  [{sev}][{cat}] {title} ({src}, {date})")
+        lines.append(f"    {desc}")
+    return "\n".join(lines)
+
+
+# Module-level constant — loaded once at import time, reused on every request
+_THREAT_INTEL_BLOCK: str = _load_scam_context()
+print(f"✓ Threat intelligence loaded: {_THREAT_INTEL_BLOCK.count('[HIGH]') + _THREAT_INTEL_BLOCK.count('[MEDIUM]')} scam patterns injected into judge")
 
 
 def final_analysis_node(state: CourtroomState):
@@ -93,6 +138,11 @@ def final_analysis_node(state: CourtroomState):
         all_claims_summary += "\n"
 
     # Create analysis prompt
+    # Inject threat intelligence block only if it loaded successfully
+    threat_section = f"""
+    {_THREAT_INTEL_BLOCK}
+    """ if _THREAT_INTEL_BLOCK else ""
+
     analysis_prompt = f"""
     You are the Supreme Court Chief Justice delivering the FINAL COMPREHENSIVE VERDICT.
 
@@ -101,6 +151,7 @@ def final_analysis_node(state: CourtroomState):
 
     ALL CLAIMS WITH VERIFIED EVIDENCE:
     {all_claims_summary}
+    {threat_section}
 
     YOUR TASK:
     Analyze ALL claims and produce a complete verdict structure.

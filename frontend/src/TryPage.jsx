@@ -5,10 +5,13 @@ import { FaPlus, FaHistory, FaFileUpload, FaPaperPlane, FaRobot, FaHome, FaTrash
 import './TryPage.css';
 import ResultsDisplay from './ResultsDisplay';
 import ExpertChat from './ExpertChat';
+import CompassChat from './CompassChat';
 
 function TryPage() {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const [activeMode, setActiveMode] = useState('courtroom'); // 'courtroom' or 'compass'
     const [history, setHistory] = useState([]);
+    const [compassHistory, setCompassHistory] = useState([]); // Compass session history
     const [currentResult, setCurrentResult] = useState(null);
     const [loading, setLoading] = useState(false);
     const [progressMessage, setProgressMessage] = useState("");
@@ -28,6 +31,8 @@ function TryPage() {
     useEffect(() => {
         const savedHistory = JSON.parse(localStorage.getItem('truth_history') || '[]');
         setHistory(savedHistory);
+        const savedCompassHistory = JSON.parse(localStorage.getItem('compass_history') || '[]');
+        setCompassHistory(savedCompassHistory);
 
         return () => {
             if (pollingRef.current) clearTimeout(pollingRef.current);
@@ -77,6 +82,26 @@ function TryPage() {
         const updatedHistory = history.filter(item => item.id !== itemId);
         setHistory(updatedHistory);
         localStorage.setItem('truth_history', JSON.stringify(updatedHistory));
+    };
+
+    // Add a completed Compass session to sidebar history
+    const addCompassHistory = (title, sessionId) => {
+        const newItem = { id: Date.now(), title, sessionId, type: 'compass' };
+        setCompassHistory(prev => {
+            const updated = [newItem, ...prev].slice(0, 20);
+            localStorage.setItem('compass_history', JSON.stringify(updated));
+            return updated;
+        });
+    };
+
+    // Delete a compass history item
+    const deleteCompassHistoryItem = (e, itemId) => {
+        e.stopPropagation();
+        setCompassHistory(prev => {
+            const updated = prev.filter(i => i.id !== itemId);
+            localStorage.setItem('compass_history', JSON.stringify(updated));
+            return updated;
+        });
     };
 
     // Main handler - decides whether to upload video or analyze text
@@ -276,6 +301,7 @@ function TryPage() {
                         </div>
                     )}
 
+                    {/* Courtroom history */}
                     {history.map((item) => (
                         <div
                             key={item.id}
@@ -293,16 +319,62 @@ function TryPage() {
                             </button>
                         </div>
                     ))}
+
+                    {/* Compass history */}
+                    {compassHistory.length > 0 && (
+                        <>
+                            {history.length > 0 && <p className="history-label" style={{marginTop: '1rem'}}>Compass</p>}
+                            {history.length === 0 && <p className="history-label">Compass</p>}
+                            {compassHistory.map((item) => (
+                                <div
+                                    key={item.id}
+                                    className="history-item"
+                                    onClick={() => setActiveMode('compass')}
+                                >
+                                    <FaComments className="history-icon" style={{color: 'var(--accent-blue)', opacity: 0.7}} />
+                                    <span className="history-title">{item.title}</span>
+                                    <button
+                                        className="delete-history-btn"
+                                        onClick={(e) => deleteCompassHistoryItem(e, item.id)}
+                                        title="Delete"
+                                    >
+                                        <FaTrash />
+                                    </button>
+                                </div>
+                            ))}
+                        </>
+                    )}
                 </div>
             </aside>
 
             {/* Main content area */}
             <main className="main-content">
+                {/* Mode Toggle */}
+                <div className="mode-toggle-bar">
+                    <button
+                        className={`mode-toggle-btn ${activeMode === 'courtroom' ? 'active' : ''}`}
+                        onClick={() => setActiveMode('courtroom')}
+                    >
+                        Courtroom
+                    </button>
+                    <button
+                        className={`mode-toggle-btn ${activeMode === 'compass' ? 'active' : ''}`}
+                        onClick={() => setActiveMode('compass')}
+                    >
+                        Regulatory Compass
+                    </button>
+                </div>
+
+                {/* Compass Mode */}
+                {activeMode === 'compass' ? (
+                    <CompassChat onAddHistory={addCompassHistory} />
+                ) : (
+                <>
                 <div className="chat-scroll-area">
                     {/* Show welcome screen when idle */}
                     {!currentResult && !loading && !userQuery && (
                         <div className="welcome-screen">
-                            <h1>SATYA</h1>
+                            <h1>Courtroom</h1>
                             <p className="welcome-text">
                                 Upload a video or type your query to verify facts against reality.
                             </p>
@@ -381,6 +453,7 @@ function TryPage() {
                             <ResultsDisplay
                                 verdict={currentResult.verdict}
                                 visualAnalysis={currentResult.visual_analysis}
+                                deepfakeAnalysis={currentResult.deepfake_analysis}
                             />
 
 
@@ -462,6 +535,8 @@ function TryPage() {
                         Truth Engine may display inaccurate info, including about people, so double-check its responses.
                     </p>
                 </div>
+                </>
+                )}
             </main>
 
             {/* Expert Chat Sidebar */}

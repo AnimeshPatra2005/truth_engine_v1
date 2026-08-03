@@ -55,6 +55,7 @@ body {
 /* PARTICLE CANVAS */
 /* ============================================ */
 .particle-canvas {
+    display: none;
     position: fixed;
     top: 0;
     left: 0;
@@ -189,16 +190,18 @@ body {
 /* ============================================ */
 .hero {
     position: relative;
-    min-height: 100vh;
+    min-height: calc(100vh - 44px);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-top: var(--spacing-xxl);
-    /* Offset for fixed navbar - now scales */
+    padding-top: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
 }
 
 .hero-content {
     text-align: center;
+    margin-top: -0.200rem;
+    /* 👈 Adjust this value to nudge SATYA, quote & button up (-) or down (+) */
 }
 
 .hero-title {
@@ -211,7 +214,6 @@ body {
     margin-bottom: var(--spacing-md);
     font-family: 'Inter', 'Segoe UI', sans-serif;
     margin-left: var(--spacing-sm);
-    /* Push slightly right - now scales */
 }
 
 .hero-quote {
@@ -220,7 +222,6 @@ body {
     color: #fff;
     mix-blend-mode: difference;
     margin-bottom: var(--spacing-lg);
-    /* Now scales */
     letter-spacing: 0.02em;
 }
 
