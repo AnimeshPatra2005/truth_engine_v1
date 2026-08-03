@@ -165,6 +165,9 @@ def match_rules(demands: List[Dict]) -> List[Dict]:
     For each extracted demand, find matching regulatory rules.
     Uses keyword overlap for fast matching (no API calls).
     Returns demands enriched with matched rules and their citations.
+
+    Boss scam and gift card scams are behavioral — they have NO matching
+    regulatory rule. They are identified by scam_context patterns instead.
     """
     rules = get_rules()
     enriched_demands = []
@@ -179,7 +182,6 @@ def match_rules(demands: List[Dict]) -> List[Dict]:
         best_score = 0
 
         for rule in rules:
-            # Score based on keyword overlap
             score = 0
             for keyword in rule.get("keywords", []):
                 if keyword.lower() in demand_text:
@@ -189,16 +191,23 @@ def match_rules(demands: List[Dict]) -> List[Dict]:
             if rule.get("category") == demand.get("type"):
                 score += 2
 
-            # Entity match bonus
-            if rule.get("entity", "").lower() in demand.get("entity_claimed", "").lower():
-                score += 2
+            # Entity match — REQUIRED for regulatory rules
+            # A boss scam demand (entity_claimed = 'Boss/CEO') must NOT match
+            # SEBI or RBI rules. Penalise entity mismatch heavily.
+            rule_entity = rule.get("entity", "").lower()
+            demand_entity = demand.get("entity_claimed", "").lower()
+            if rule_entity and rule_entity in demand_entity:
+                score += 3  # Strong entity match
+            elif rule_entity and rule_entity not in demand_entity:
+                score -= 3  # Penalise entity mismatch
 
             if score > best_score:
                 best_score = score
                 best_match = rule
 
         enriched = {**demand}
-        if best_match and best_score >= 2:  # Minimum threshold
+        # Raise threshold to 4 — requires both category and entity alignment
+        if best_match and best_score >= 4:
             enriched["matched_rule"] = {
                 "id": best_match["id"],
                 "rule": best_match["rule"],
@@ -206,7 +215,7 @@ def match_rules(demands: List[Dict]) -> List[Dict]:
                 "actionable_steps": best_match["actionable_steps"],
                 "proof_links": best_match["proof_links"],
                 "severity": best_match["severity"],
-                "match_confidence": min(best_score / 5, 1.0)  # Normalize to 0-1
+                "match_confidence": min(best_score / 8, 1.0)
             }
         else:
             enriched["matched_rule"] = None
@@ -214,6 +223,63 @@ def match_rules(demands: List[Dict]) -> List[Dict]:
         enriched_demands.append(enriched)
 
     return enriched_demands
+
+
+def detect_behavioral_scam(demands: List[Dict], message: str) -> Optional[Dict]:
+    """
+    Check if the message matches a known behavioral scam pattern (boss scam,
+    gift card scam, WhatsApp investment group, etc.) using scam_context.
+
+    Returns the best matching scam context entry or None.
+    Behavioral scams have no verifiable regulatory claim — the fraud is in
+    the social engineering pattern, not a rule violation.
+    """
+    scam_ctx = get_scam_context()
+    message_lower = message.lower()
+
+    # Behavioral indicators from demands
+    has_gift_card = any(
+        "gift" in d.get("ask", "").lower() or "apple" in d.get("ask", "").lower()
+        for d in demands
+    )
+    has_boss_entity = any(
+        "boss" in d.get("entity_claimed", "").lower() or
+        "ceo" in d.get("entity_claimed", "").lower() or
+        "cfo" in d.get("entity_claimed", "").lower() or
+        "manager" in d.get("entity_claimed", "").lower()
+        for d in demands
+    )
+    has_confidential = "confidential" in message_lower or "don't tell" in message_lower or "secret" in message_lower
+    has_urgency = any(
+        d.get("urgency_level") == "high" for d in demands
+    )
+
+    best_entry = None
+    best_score = 0
+
+    for entry in scam_ctx:
+        score = 0
+        desc_lower = entry.get("description", "").lower()
+        title_lower = entry.get("title", "").lower()
+
+        # Keyword matches in message
+        for word in ["gift card", "apple", "voucher", "boss", "ceo", "whatsapp",
+                     "confidential", "urgent", "meeting", "transfer", "reimburse"]:
+            if word in message_lower and word in desc_lower:
+                score += 2
+
+        # Pattern signals
+        if has_gift_card and "gift" in desc_lower: score += 4
+        if has_boss_entity and ("boss" in desc_lower or "executive" in desc_lower): score += 4
+        if has_confidential and "confidential" in desc_lower: score += 2
+        if has_urgency: score += 1
+
+        if score > best_score:
+            best_score = score
+            best_entry = entry
+
+    # Only return if reasonably confident
+    return best_entry if best_score >= 4 else None
 
 
 # ==============================================================================
@@ -258,43 +324,56 @@ VERDICT_PROMPT = """You are Satya's Regulatory Compass — a financial fraud ana
 
 A user received a suspicious communication and you have analyzed it. Below are the extracted demands and any matching regulatory rules.
 
+SCAM TYPE DETECTED: {scam_type}
+
 EXTRACTED DEMANDS AND EVIDENCE:
 {demands_json}
 
 KNOWN SCAM PATTERNS (for additional context):
 {scam_context}
 
-Based on your analysis, provide a comprehensive response to the user. Your response should:
+Based on your analysis, provide a comprehensive response. Follow these rules strictly:
 
-1. Start with an OVERALL RISK ASSESSMENT. Score based on these parameters:
-   - Financial Exposure: How much money is at risk? (higher amount = higher risk)
-   - Information Sensitivity: Are they asking for credentials, OTP, bank details? (more sensitive = higher risk)
-   - Urgency Pressure: Is artificial urgency or threats being used? (more pressure = higher risk)
-   - Authority Impersonation: Are they impersonating SEBI/RBI/exchange/boss? (higher authority = higher risk)
-   - Channel Anomaly: Is the communication channel unusual for the claimed entity? (more unusual = higher risk)
+1. Start with OVERALL RISK ASSESSMENT scoring these parameters:
+   - Financial Exposure: How much money is at risk?
+   - Information Sensitivity: Are credentials, OTP, or account details being asked for?
+   - Urgency Pressure: Is artificial urgency or threats being used?
+   - Authority Impersonation: Are they impersonating SEBI/RBI/exchange/boss?
+   - Channel Anomaly: Is the communication channel unusual for the claimed entity?
 
-2. For EACH demand, explain:
-   - Whether it violates a known regulatory rule (quote the rule if matched)
-   - Why it's suspicious or legitimate
-   - Reference the proof links provided
+2. For BEHAVIORAL SCAMS (boss scam, gift card scam, social engineering):
+   - Do NOT try to match demands to SEBI/RBI rules — there are none to match
+   - Identify the behavioral red flags (urgency + confidentiality + unusual payment method)
+   - Cite the relevant scam pattern awareness sources provided
+   - Do NOT cite STT/regulatory rules sources — they are irrelevant
 
-3. End with CLEAR ACTIONABLE STEPS the user should take immediately.
+3. For REGULATORY SCAMS (fake SEBI notices, forged RBI letters, fake exchange alerts):
+   - Quote the specific rule being violated
+   - Cite proof links showing what regulators actually do
 
-4. If any demand is NOT clearly fraudulent (i.e., you genuinely cannot determine), say so honestly. Do not overstate risk.
+4. ACTIONABLE STEPS must be ordered as:
+   FIRST — Verification steps (call the person on their known number, check with finance team)
+   SECOND — Protective steps (do not transfer, do not share codes, screenshot evidence)
+   THIRD — Escalation steps (IT security team, bank alert) — only if money was actually sent or user confirms fraud
+   DO NOT include police/FIR steps in the initial output unless money has already been transferred
+   STRICTLY deduplicate — do not repeat any step
+   Maximum 6 steps total in the initial response
 
-Format your risk assessment as:
+5. If any demand is NOT clearly fraudulent, say so honestly.
+
+Format:
 OVERALL_RISK: HIGH/MEDIUM/LOW
 RISK_PARAMETERS:
 - Financial Exposure: HIGH/MEDIUM/LOW — [brief reason]
-- Information Sensitivity: HIGH/MEDIUM/LOW — [brief reason]  
+- Information Sensitivity: HIGH/MEDIUM/LOW — [brief reason]
 - Urgency Pressure: HIGH/MEDIUM/LOW — [brief reason]
 - Authority Impersonation: HIGH/MEDIUM/LOW — [brief reason]
 - Channel Anomaly: HIGH/MEDIUM/LOW — [brief reason]
 
-Then give your detailed analysis in natural, conversational language. Keep it under 500 words.
+Then give your analysis in natural, conversational language. Keep it under 400 words.
 Reference sources using [Source: label](url) format.
 
-IMPORTANT: Be direct and actionable. This person may be about to lose money."""
+IMPORTANT: Be direct. This person may be about to lose money. Do not repeat steps. Do not escalate to police unless asked."""
 
 
 def synthesize_verdict(demands: List[Dict], original_message: str) -> Dict:
@@ -326,23 +405,35 @@ def synthesize_verdict(demands: List[Dict], original_message: str) -> Dict:
 
         demands_for_prompt.append(entry)
 
+    # Detect behavioral scam pattern first
+    behavioral_scam = detect_behavioral_scam(demands, original_message)
+    scam_type = "BEHAVIORAL_SOCIAL_ENGINEERING" if behavioral_scam else "REGULATORY_FRAUD"
+
     # Include relevant scam context
     scam_ctx = get_scam_context()
     relevant_scam_entries = []
-    message_lower = original_message.lower()
-    for entry in scam_ctx:
-        desc_lower = entry.get("description", "").lower()
-        # Simple relevance check
-        if any(word in message_lower for word in desc_lower.split()[:5]):
-            relevant_scam_entries.append({
-                "title": entry["title"],
-                "description": entry["description"],
-                "source_url": entry.get("source_url", "")
-            })
+    if behavioral_scam:
+        # For behavioral scams, use the matched entry directly
+        relevant_scam_entries.append({
+            "title": behavioral_scam["title"],
+            "description": behavioral_scam["description"],
+            "source_url": behavioral_scam.get("source_url", "")
+        })
+    else:
+        message_lower = original_message.lower()
+        for entry in scam_ctx:
+            desc_lower = entry.get("description", "").lower()
+            if any(word in message_lower for word in desc_lower.split()[:5]):
+                relevant_scam_entries.append({
+                    "title": entry["title"],
+                    "description": entry["description"],
+                    "source_url": entry.get("source_url", "")
+                })
 
     prompt = VERDICT_PROMPT.format(
+        scam_type=scam_type,
         demands_json=json.dumps(demands_for_prompt, indent=2),
-        scam_context=json.dumps(relevant_scam_entries[:5], indent=2) if relevant_scam_entries else "No directly matching scam patterns found."
+        scam_context=json.dumps(relevant_scam_entries[:3], indent=2) if relevant_scam_entries else "No directly matching scam patterns found."
     )
 
     try:
@@ -359,30 +450,65 @@ def synthesize_verdict(demands: List[Dict], original_message: str) -> Dict:
         # Extract risk parameters
         risk_parameters = _extract_risk_parameters(answer)
 
-        # Collect all citations
+        # Collect citations — for behavioral scams, only include scam-awareness sources
+        # not regulatory rule sources that are irrelevant
         citations = []
         seen_urls = set()
-        for d in demands:
-            if d.get("matched_rule"):
-                for link in d["matched_rule"].get("proof_links", []):
-                    if link["url"] not in seen_urls:
-                        citations.append(link)
-                        seen_urls.add(link["url"])
-            if d.get("web_evidence"):
-                for ev in d["web_evidence"]:
-                    if ev["url"] not in seen_urls:
-                        citations.append({"label": ev["title"], "url": ev["url"]})
-                        seen_urls.add(ev["url"])
 
-        # Collect all actionable steps
+        if scam_type == "BEHAVIORAL_SOCIAL_ENGINEERING":
+            # Use scam_context source URL directly
+            if behavioral_scam and behavioral_scam.get("source_url"):
+                citations.append({
+                    "label": behavioral_scam["title"],
+                    "url": behavioral_scam["source_url"]
+                })
+                seen_urls.add(behavioral_scam["source_url"])
+            # Also add any web evidence from unmatched demands
+            for d in demands:
+                if d.get("web_evidence"):
+                    for ev in d["web_evidence"]:
+                        if ev["url"] not in seen_urls:
+                            citations.append({"label": ev["title"], "url": ev["url"]})
+                            seen_urls.add(ev["url"])
+        else:
+            # Regulatory scam — use matched rule proof links
+            for d in demands:
+                if d.get("matched_rule"):
+                    for link in d["matched_rule"].get("proof_links", []):
+                        if link["url"] not in seen_urls:
+                            citations.append(link)
+                            seen_urls.add(link["url"])
+                if d.get("web_evidence"):
+                    for ev in d["web_evidence"]:
+                        if ev["url"] not in seen_urls:
+                            citations.append({"label": ev["title"], "url": ev["url"]})
+                            seen_urls.add(ev["url"])
+
+        # Collect deduplicated actionable steps
+        # For behavioral scams: steps come only from LLM synthesis (already in response)
+        # For regulatory scams: aggregate from matched rules, deduplicated
         all_steps = []
         seen_steps = set()
-        for d in demands:
-            if d.get("matched_rule"):
-                for step in d["matched_rule"].get("actionable_steps", []):
-                    if step not in seen_steps:
-                        all_steps.append(step)
-                        seen_steps.add(step)
+
+        if scam_type == "REGULATORY_FRAUD":
+            # Aggregate unique steps from matched rules
+            for d in demands:
+                if d.get("matched_rule"):
+                    for step in d["matched_rule"].get("actionable_steps", []):
+                        # Normalize for dedup — lowercase first 40 chars
+                        norm = step.strip().lower()[:40]
+                        if norm not in seen_steps:
+                            all_steps.append(step)
+                            seen_steps.add(norm)
+        else:
+            # Behavioral scam: use a concise, ordered default set
+            all_steps = [
+                "Do NOT send any money, gift cards, or codes",
+                "Call the person directly on their known/saved number — NOT any number in the message",
+                "Verify through your company's official finance or HR channel before taking any action",
+                "Screenshot the conversation as evidence",
+                "Alert your IT security team or manager through official channels",
+            ]
 
         return {
             "overall_risk": risk_level,
