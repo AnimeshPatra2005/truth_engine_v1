@@ -27,6 +27,7 @@ def run_analysis_background(job_id: str, transcript: str = None, file_path: str 
     """Background task handler for analysis workflow"""
     try:
         visual_analysis = None
+        deepfake_analysis = None
         
         if file_path:
             job_results[job_id]["progress"] = "Processing video with Gemini..."
