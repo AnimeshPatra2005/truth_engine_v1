@@ -11,7 +11,7 @@ load_dotenv()
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
-MODEL_NAME = "gemini-3-flash-preview"
+MODEL_NAME = "gemini-3.5-flash"
 API_CALL_DELAY = 2  # Reduced from 10s - using 3 specialized models
 MAX_RETRIES_ON_QUOTA = 3
 
@@ -25,7 +25,7 @@ api_call_count = 0
 
 # Low thinking: Fast, for simple tasks (decomposition, query generation)
 llm_decomposer = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-3.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"), 
     temperature=0,
     thinking_level="low"
@@ -33,7 +33,7 @@ llm_decomposer = ChatGoogleGenerativeAI(
 
 # Medium thinking: Balanced, for analysis tasks (consensus, evidence extraction)
 llm_analyzer = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-3.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),   
     temperature=0,
     thinking_level="medium"
@@ -41,15 +41,15 @@ llm_analyzer = ChatGoogleGenerativeAI(
 
 # High thinking: Deep reasoning for final verdict
 llm_judge = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-3.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_ANALYSIS"),
     temperature=0,
     thinking_level="high"
 )
 
-# Fallback model: Gemini 3 Pro for when Flash preview hits rate limits
+# Fallback model: Used when primary model hits rate limits (RESOURCE_EXHAUSTED)
 llm_fallback = ChatGoogleGenerativeAI(
-    model="gemini-3-pro-preview",
+    model="gemini-3.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY_SEARCH"),  # Use SEARCH key to balance load
     temperature=0
 )

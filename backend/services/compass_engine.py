@@ -42,7 +42,7 @@ def get_compass_llm():
     global _compass_llm
     if _compass_llm is None:
         _compass_llm = ChatGoogleGenerativeAI(
-            model="gemini-3-flash-preview",
+            model="gemini-3.5-flash",
             google_api_key=os.getenv("GEMINI_API_CHATBOT"),
             temperature=0.2,
             thinking_level="medium",

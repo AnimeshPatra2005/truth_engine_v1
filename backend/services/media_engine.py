@@ -20,7 +20,7 @@ load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY_SEARCH"))
 
 # Model to use for media processing
-MEDIA_MODEL = "gemini-3-flash-preview"
+MEDIA_MODEL = "gemini-3.5-flash"
 
 
 def upload_to_gemini(file_path: str) -> types.File:
