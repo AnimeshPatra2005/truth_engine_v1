@@ -9,18 +9,19 @@ from datetime import datetime
 from typing import Optional, Dict, List
 import chromadb
 from chromadb.config import Settings
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configure Gemini
-if not os.getenv("GEMINI_API_KEY_SEARCH"):
+# Initialize Gemini client (new SDK — uses REST, no gRPC credential plugin)
+_api_key = os.getenv("GEMINI_API_KEY_SEARCH")
+if not _api_key:
     print("WARNING: GEMINI_API_KEY_SEARCH not found in environment variables")
-else:
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY_SEARCH"))
+_embed_client = genai.Client(api_key=_api_key)
 
-EMBEDDING_MODEL = "models/gemini-embedding-001"
+EMBEDDING_MODEL = "gemini-embedding-001"
 
 CHROMA_DB_PATH = "./chroma_db"
 MAX_CASES = 20  # Only keep the 20 most recent cases
@@ -76,12 +77,12 @@ def compute_embedding(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> List[
         List of floats (embedding vector)
     """
     try:
-        result = genai.embed_content(
+        result = _embed_client.models.embed_content(
             model=EMBEDDING_MODEL,
-            content=text,
-            task_type=task_type
+            contents=text,
+            config=types.EmbedContentConfig(task_type=task_type)
         )
-        return result["embedding"]
+        return result.embeddings[0].values
     except Exception as e:
         print(f"Error computing embedding: {e}")
         return []
@@ -96,15 +97,13 @@ def compute_batch_embeddings(texts: List[str], task_type: str = "RETRIEVAL_DOCUM
         return []
         
     try:
-        # Simple batch call
-        # Note: Gemini API has limits on batch size, but for < 100 items it's usually fine
-        # If texts list is huge, we might need to chunk it further.
-        result = genai.embed_content(
+        # gemini-embedding-001 returns one embedding per string in a batch
+        result = _embed_client.models.embed_content(
             model=EMBEDDING_MODEL,
-            content=texts,
-            task_type=task_type
+            contents=texts,
+            config=types.EmbedContentConfig(task_type=task_type)
         )
-        return result["embedding"]
+        return [e.values for e in result.embeddings]
     except Exception as e:
         print(f"Batch embedding error: {e}. Falling back to single processing.")
         # Fallback to single processing if batch fails
